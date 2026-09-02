@@ -1,6 +1,6 @@
 {
   "id": "dsh-external/dsh-code-navigator",
-  "version": "0.1.0-alpha.5",
+  "version": "0.1.0-alpha.6",
   "main": "./lib/index.mjs",
   "description": "Standalone persistent clangd, Pyright, and TypeScript language-server navigation for DSH",
   "engines": { "dsh": ">=0.1.2-alpha.3" }

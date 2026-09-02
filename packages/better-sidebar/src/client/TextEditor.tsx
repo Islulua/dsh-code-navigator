@@ -16,7 +16,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import clsx from 'clsx'
-import { EditorState } from '@codemirror/state'
+import { EditorState, StateEffect } from '@codemirror/state'
 import { EditorView as CodeMirrorView, keymap, lineNumbers } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { IconCheckOutline16, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -211,7 +211,31 @@ export function TextEditor(props: FileViewerProps) {
     })
     const view = new CodeMirrorView({ state, parent: host })
     viewRef.current = view
+    const documentListeners = new Set<(text: string) => void>()
+    const lifecycleDisposers = (viewerId === 'code' ? ctx.get('betterSidebar')?.getEditorLifecycles() ?? [] : []).map(factory => {
+      try {
+        return factory({
+          scope, path, content,
+          dom: view.dom,
+          getText: () => view.state.doc.toString(),
+          posAtCoords: coords => view.posAtCoords(coords),
+          onDocumentChange: listener => {
+            documentListeners.add(listener)
+            return () => { documentListeners.delete(listener) }
+          },
+        })
+      } catch (error) {
+        console.error('[dsh-better-sidebar] editor lifecycle failed:', error)
+        return undefined
+      }
+    })
+    const notifyDocumentListeners = CodeMirrorView.updateListener.of((update) => {
+      if (!update.docChanged) return
+      for (const listener of documentListeners) listener(update.state.doc.toString())
+    })
+    view.dispatch({ effects: StateEffect.appendConfig.of(notifyDocumentListeners) })
     return () => {
+      for (const dispose of lifecycleDisposers) dispose?.()
       view.destroy()
       viewRef.current = null
       themeCompRef.current = null

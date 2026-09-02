@@ -221,12 +221,6 @@ importers:
 
   packages/code-navigator:
     dependencies:
-      '@codemirror/state':
-        specifier: ^6.7.1
-        version: 6.7.2
-      '@codemirror/view':
-        specifier: ^6.43.8
-        version: 6.43.10
       '@deepseek-ai/dsh-lsp':
         specifier: 0.1.2-alpha.3
         version: 0.1.2-alpha.3(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-brand@0.1.2-alpha.3(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.2-alpha.3(@deepseek-ai/cordis@4.0.2)))(@deepseek-ai/dsh-invariants@0.1.2-alpha.3(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-llm@0.1.2-alpha.3(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.2-alpha.3(@deepseek-ai/cordis@4.0.2)))

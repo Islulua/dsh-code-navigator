@@ -149,6 +149,20 @@ export interface SidebarEditorExtensionContext {
 /** A pure CodeMirror extension factory contributed by another client plugin. */
 export type SidebarEditorExtensionFactory = (context: SidebarEditorExtensionContext) => Extension | readonly Extension[]
 
+/** A mounted code editor exposed without leaking CodeMirror's module identity. */
+export interface SidebarEditorLifecycleContext {
+  scope: SessionScope
+  path: string
+  content: string
+  dom: HTMLElement
+  getText(): string
+  posAtCoords(coords: { x: number; y: number }): number | null
+  onDocumentChange(listener: (text: string) => void): () => void
+}
+
+/** Browser behavior attached to the built-in editor after its view exists. */
+export type SidebarEditorLifecycleFactory = (context: SidebarEditorLifecycleContext) => void | (() => void)
+
 /** One small action rendered immediately before the sidebar panel controls. */
 export interface SidebarTopBarAction {
   id: string
@@ -371,6 +385,9 @@ export interface BetterSidebarService {
   registerEditorExtension(id: string, factory: SidebarEditorExtensionFactory): () => void
   /** Resolve every live code-editor contribution in stable registration order. */
   getEditorExtensions(context: SidebarEditorExtensionContext): readonly Extension[]
+  /** Attach DOM behavior to the built-in editor without importing CodeMirror. */
+  registerEditorLifecycle(id: string, factory: SidebarEditorLifecycleFactory): () => void
+  getEditorLifecycles(): readonly SidebarEditorLifecycleFactory[]
   /** Register a small action in the top-right workbench strip. */
   registerTopBarAction(action: SidebarTopBarAction): () => void
   getTopBarActions(): readonly SidebarTopBarAction[]
@@ -505,7 +522,7 @@ export function matchUrlTarget(tabs: readonly TabDescriptor[], url: URL): TabDes
  * The plugin version this service instance reports. Keep in lockstep with
  * `package.json`'s version — `tests/service.spec.ts` asserts the pair.
  */
-export const SIDEBAR_SERVICE_VERSION = '0.18.1-alpha.7'
+export const SIDEBAR_SERVICE_VERSION = '0.18.1-alpha.8'
 
 /**
  * Monotonic capability list consumers use to gate new API usage (features
@@ -537,6 +554,7 @@ export const SIDEBAR_FEATURES = [
   'settingSelect',
   'floatWindows',
   'editorExtensions',
+  'editorLifecycles',
   'openLocation',
   'topBarActions',
 ] as const
@@ -559,6 +577,7 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
   const tabs = new Map<string, TabDescriptor>()
   const viewers = new Map<string, FileViewerDescriptor>()
   const editorExtensions = new Map<string, SidebarEditorExtensionFactory>()
+  const editorLifecycles = new Map<string, SidebarEditorLifecycleFactory>()
   const topBarActions = new Map<string, SidebarTopBarAction>()
   const listeners = new Set<() => void>()
   let navigationRevision = 0
@@ -625,6 +644,20 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
     }
     return extensions
   }
+
+  const registerEditorLifecycle = (id: string, factory: SidebarEditorLifecycleFactory): (() => void) => {
+    if (editorLifecycles.has(id)) throw new Error(`[dsh-better-sidebar] editor lifecycle "${id}" already registered`)
+    editorLifecycles.set(id, factory)
+    notify()
+    return () => {
+      if (editorLifecycles.get(id) === factory) {
+        editorLifecycles.delete(id)
+        notify()
+      }
+    }
+  }
+
+  const getEditorLifecycles = (): readonly SidebarEditorLifecycleFactory[] => Array.from(editorLifecycles.values())
 
   const registerTopBarAction = (action: SidebarTopBarAction): (() => void) => {
     if (topBarActions.has(action.id)) throw new Error(`[dsh-better-sidebar] top-bar action "${action.id}" already registered`)
@@ -913,6 +946,8 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
     registerFileViewer,
     registerEditorExtension,
     getEditorExtensions,
+    registerEditorLifecycle,
+    getEditorLifecycles,
     registerTopBarAction,
     getTopBarActions,
     getTabs,

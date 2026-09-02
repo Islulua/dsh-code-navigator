@@ -1,6 +1,6 @@
 {
   "name": "dsh-code-navigator",
-  "version": "0.1.0-alpha.5",
+  "version": "0.1.0-alpha.6",
   "description": "Standalone persistent language-server navigation for DeepSeek Harness.",
   "type": "module",
   "main": "lib/index.mjs",
@@ -25,8 +25,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@codemirror/state": "^6.7.1",
-    "@codemirror/view": "^6.43.8",
     "@deepseek-ai/dsh-lsp": "0.1.2-alpha.3",
     "@deepseek-ai/dsh-lsp-stdio": "0.1.2-alpha.3"
   },
