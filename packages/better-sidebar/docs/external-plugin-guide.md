@@ -521,7 +521,6 @@ const { value } = await res.json()   // 错误时 { ok: false, error: { code, me
 | `fs.tree` | 目录列表（`{ path, entries: FsEntry[], truncated }`；FsEntry 含 `isSymlink`/`broken`，目录软链接的 `isDir` 按目标类型） |
 | `fs.read` | 读文件：文本返回 `{ kind: 'text', content, truncated }`；二进制返回 `{ kind: 'binary', size, truncated, head }`（head = base64 前 4KB） |
 | `fs.write` | 原子写文件 |
-| `lsp.query` | 语义查询；请求含 `operation/path/line/character`，导航结果返回 workspace 内的路径和零基 UTF-16 range |
 | `git.status` / `git.diff` / `git.log` 等 | 全套 Git 只读 + 写操作 |
 | `pty.close` / `agent-pty.close` | 释放终端（外部 tab 一般用不到） |
 | `settings.get` / `settings.update` | 侧边栏偏好读写（revision 守卫） |
@@ -584,8 +583,7 @@ interface BetterSidebarService {
   readonly version: string
   /** 单调能力清单（只增不删）：'badge' | 'tabLifecycle' | 'updateTab' |
    *  'openFile' | 'targetedOpen' | 'stateSubscription' | 'tabMeta' |
-   *  'pluginSettings' | 'urlTarget' | 'settingSelect' | 'floatWindows' |
-   *  'openLocation' | 'navigationHistory'
+   *  'pluginSettings' | 'urlTarget' | 'settingSelect' | 'floatWindows'
    *  ——用 `features.includes('xxx')` 按能力 gate。 */
   readonly features: readonly string[]
   /** 当前快照：激活 sessionId + 其状态（面板几何/打开的 tabs/展开集）+ prefs。
@@ -603,18 +601,6 @@ interface BetterSidebarService {
    *  注意：path 派生 id 只对 openFile/openSidebarFile 成立；editorExplorer 合并模式的
    *  原地切换经 updateTab 重写 path/title，tab id 保持稳定、不再对应 path。 */
   openFile(scope: SessionScope, path: string, title?: string): void
-  /** 打开源码位置并定位光标；line/character 为零基 UTF-16 坐标。 */
-  openLocation(
-    scope: SessionScope,
-    location: { path: string; line: number; character: number },
-    title?: string,
-    origin?: { path: string; line: number; character: number },
-  ): void
-  /** 查询并移动 VS Code 风格的语义跳转时间线。 */
-  canNavigateBack(scope: SessionScope): boolean
-  canNavigateForward(scope: SessionScope): boolean
-  navigateBack(scope: SessionScope): void
-  navigateForward(scope: SessionScope): void
 }
 
 /** openTab 的 seed（v0.12.0 起导出命名类型）。 */

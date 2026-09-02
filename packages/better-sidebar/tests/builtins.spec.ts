@@ -35,12 +35,6 @@ describe('built-in tab registrations', () => {
     )
   })
 
-  it('exposes the language-server warm-up setting on the code viewer', () => {
-    const { service } = setup()
-    const code = service.getFileViewers().find(viewer => viewer.id === 'code')
-    expect(code?.settings?.toggles?.map(toggle => toggle.key)).toEqual(['preloadCompileCommands'])
-  })
-
   it('the git (changes) tab is a single-instance badge-carrying visible tab', () => {
     const { service } = setup()
     const changes = service.getTab('git')

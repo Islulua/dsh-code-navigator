@@ -40,7 +40,6 @@ interface MountedSidebar {
   container: HTMLDivElement
   store: SidebarStore
   service: BetterSidebarService
-  sessionId: string
   unmount: () => void
 }
 
@@ -81,7 +80,6 @@ function mountSidebar(): MountedSidebar {
     container,
     store,
     service,
-    sessionId,
     unmount: () => {
       act(() => { root.unmount() })
       container.remove()
@@ -93,7 +91,7 @@ afterEach(() => {
   document.body.innerHTML = ''
   // Belt and braces: drop any persisted layout a pending 200ms debounce
   // write left behind between tests (unique session ids already isolate).
-  ;(localStorage as Partial<Storage>).clear?.()
+  localStorage.clear()
   vi.unstubAllGlobals()
 })
 
@@ -117,29 +115,6 @@ function registerStubTerminal(service: BetterSidebarService, renders: { count: n
 }
 
 describe('bottom-panel first-expand auto terminal (issue #42 trigger chain)', () => {
-  it('places semantic Back and Forward controls in the top-right toggle cluster', () => {
-    const { container, service, sessionId } = mountSidebar()
-    const scope = { sessionId, cwd: '/tmp' }
-    act(() => {
-      service.openLocation(
-        scope,
-        { path: '/tmp/b.ts', line: 8, character: 1 },
-        undefined,
-        { path: '/tmp/a.ts', line: 2, character: 4 },
-      )
-    })
-    const cluster = container.querySelector('[data-dsh-toggle-cluster]')!
-    const back = cluster.querySelector<HTMLButtonElement>(`button[aria-label="${t('browserBack')}"]`)!
-    const forward = cluster.querySelector<HTMLButtonElement>(`button[aria-label="${t('browserForward')}"]`)!
-    expect(back.disabled).toBe(false)
-    expect(forward.disabled).toBe(true)
-
-    act(() => { back.click() })
-    expect(service.canNavigateBack(scope)).toBe(false)
-    expect(service.canNavigateForward(scope)).toBe(true)
-    expect(cluster.querySelector<HTMLButtonElement>(`button[aria-label="${t('browserForward')}"]`)!.disabled).toBe(false)
-  })
-
   it('auto-opens exactly one terminal tab in the bottom workbench on the FIRST expansion', () => {
     const { container, store, service } = mountSidebar()
     const renders = { count: 0 }

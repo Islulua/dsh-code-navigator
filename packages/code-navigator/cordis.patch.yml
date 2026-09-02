@@ -1,0 +1,6 @@
+# Standalone code navigation. This package owns /code-navigator/* only; it
+# deliberately neither mounts a sidebar nor registers a ctx.lsp provider.
+- insert:
+    - id: code-navigator
+      name: 'dsh-code-navigator'
+      disabled: !!js "[...ctx.loader.entries()].some((entry) => entry.options.name === 'dsh-code-navigator' && entry.options.id !== 'code-navigator' && !entry.disabled)"

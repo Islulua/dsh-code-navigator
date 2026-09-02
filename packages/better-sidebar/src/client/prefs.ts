@@ -88,9 +88,6 @@ export function parsePrefs(value: unknown): SidebarPrefs {
     workspaceFence: typeof record.workspaceFence === 'boolean'
       ? record.workspaceFence
       : SIDEBAR_PREFS_DEFAULTS.workspaceFence,
-    preloadCompileCommands: typeof record.preloadCompileCommands === 'boolean'
-      ? record.preloadCompileCommands
-      : SIDEBAR_PREFS_DEFAULTS.preloadCompileCommands,
     // The title-bar scheme (auto | web | preset | custom). The schema
     // declares the field WITHOUT a default, so documents written by older
     // plugin versions resolve without it — migrate from the legacy fields:

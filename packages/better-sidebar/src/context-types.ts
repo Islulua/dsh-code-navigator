@@ -31,31 +31,6 @@
 import type { Context as CordisContext } from '@deepseek-ai/cordis'
 import type { BetterSidebarService } from './client/service.ts'
 
-/** Zero-based UTF-16 coordinate used by the host LSP capability. */
-export interface SidebarLspPosition {
-  line: number
-  character: number
-}
-
-/** One location returned by the host LSP capability. */
-export interface SidebarLspLocation {
-  uri: string
-  range: { start: SidebarLspPosition; end: SidebarLspPosition }
-}
-
-/** Structural subset of the DSH LSP capability consumed by the sidebar. */
-export interface SidebarLspService {
-  query(request: {
-    operation: 'goToDefinition' | 'findReferences' | 'goToImplementation' | 'hover'
-    filePath: string
-    position: SidebarLspPosition
-    workspaceRoot: string
-  }): Promise<
-    | { kind: 'locations'; locations: readonly SidebarLspLocation[]; resolvedWorkspaceUri: string }
-    | { kind: 'hover'; hover: { contents: string; range?: { start: SidebarLspPosition; end: SidebarLspPosition } } | null }
-  >
-}
-
 /** The request face route handlers see (structural subset of node's
  *  IncomingMessage: the URL/method/header reads and the async body
  *  iteration `readJsonBody` uses). */
@@ -537,8 +512,6 @@ export interface SidebarContextShape {
   modules: { import(specifier: string): Promise<unknown> }
   /** The host background-job registry (optional; routes degrade to 503). */
   jobs: SidebarJobsService
-  /** The host semantic-code-navigation capability (optional). */
-  lsp?: SidebarLspService
   /** The host live-agent registry (optional; side chat thread agents). */
   agents: SidebarAgentsService
   /** The host subagent runtime (optional; live topology batch route). */

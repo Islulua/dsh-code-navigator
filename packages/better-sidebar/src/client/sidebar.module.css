@@ -58,8 +58,8 @@
   left: 0;
 }
 
-/* The persistent control cluster at the top-right corner: navigation first,
-   then the bottom- and right-panel controls.
+/* The persistent expand/collapse cluster at the top-right corner: two rail
+   controls side by side (bottom panel's glyph LEFT of the right panel's).
    Always pinned to the viewport corner — inside the right panel's top-right
    while it is open, sitting flush in the 34px tab strip (28px buttons at
    top: 3) whose right end it really squeezes. Host-internal z-index 45
@@ -85,10 +85,10 @@
    right end, so the tabs and the + menu genuinely yield space to the cluster
    (never hiding under it). */
 .panel:not(.panelHidden) .tabBar {
-  padding-right: 136px;
+  padding-right: 72px;
 }
 
-/* Each control uses the native rail icon treatment: a plain
+/* The closed-state affordance is the native rail icon control: a plain
    28px circle (the app's icon-button size — the cluster must stay inside
    the 34px tab-strip band so it never covers the pane headers below),
    transparent fill, secondary ink; hover raises the fill. No border, no
@@ -1417,52 +1417,6 @@ body[data-dsh-sidebar-dragging] .bottomPanel {
 
 .editorStatusError {
   color: var(--dsw-alias-state-error-primary);
-}
-
-.lspStatusBar {
-  flex: none;
-  min-height: 24px;
-  padding: 0 10px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  border-top: 1px solid var(--dsw-alias-border-l1);
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-tertiary);
-  font: var(--dsw-font-xxxs-11);
-}
-
-.lspStatusDot {
-  width: 6px;
-  height: 6px;
-  flex: none;
-  border-radius: 50%;
-  background: var(--dsw-alias-state-success-primary);
-}
-
-.lspStatusBusy {
-  background: var(--dsw-alias-brand-primary);
-  animation: lspStatusPulse 1s ease-in-out infinite alternate;
-}
-
-.lspStatusFailed {
-  color: var(--dsw-alias-state-error-primary);
-}
-
-.lspStatusFailed .lspStatusDot {
-  background: var(--dsw-alias-state-error-primary);
-}
-
-.lspStatusText {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-@keyframes lspStatusPulse {
-  from { opacity: 0.35; }
-  to { opacity: 1; }
 }
 
 .dirtyDot {

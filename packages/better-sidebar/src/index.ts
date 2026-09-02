@@ -15,11 +15,10 @@
  */
 import { mkdir, open, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import type { IncomingMessage } from 'node:http'
 import type { Duplex } from 'node:stream'
 import { WebSocket, WebSocketServer } from 'ws'
-import type { Context, SidebarHttpRequest, SidebarLspService, SidebarSessionEvent } from './context-types.ts'
+import type { Context, SidebarHttpRequest, SidebarSessionEvent } from './context-types.ts'
 import {
   Config,
   PrefsSchema,
@@ -36,7 +35,6 @@ import { ensureWorkspacePath, ensureWorkspaceWritePath } from './path-security.t
 import { searchFiles } from './fs-search.ts'
 import { decodeHtmlUrl } from './html-route.ts'
 import { extractFrameAncestors } from './browser-probe.ts'
-import { detectLspProject } from './lsp-project.ts'
 import { isTrustedApiRequest, isLoopbackHostname } from './trust-fence.ts'
 import { registerBundleRoute } from './bundle-route.ts'
 import { launchExternal } from './open-external.ts'
@@ -306,16 +304,6 @@ function buildApi(
     const clientCwd = typeof record?.cwd === 'string' && record.cwd !== '' ? record.cwd : undefined
     return { sessionId, cwd: await sessionCwdOf(ctx, sessionId, clientCwd) }
   }
-  const lspPositionOf = (payload: unknown): { line: number; character: number } => {
-    const record = payload as { line?: unknown; character?: unknown } | null
-    if (!Number.isInteger(record?.line) || (record?.line as number) < 0) {
-      throw new SidebarError('bad-request', 'missing or invalid "line"')
-    }
-    if (!Number.isInteger(record?.character) || (record?.character as number) < 0) {
-      throw new SidebarError('bad-request', 'missing or invalid "character"')
-    }
-    return { line: record!.line as number, character: record!.character as number }
-  }
   /** Resolve the optional Git-panel checkout selector against the authoritative
    * session repository. Unlike `cwd`, `worktree` is never trusted directly. */
   const gitCwdOf = async (payload: unknown): Promise<{ sessionId: string; cwd: string }> => {
@@ -379,53 +367,6 @@ function buildApi(
         throw new SidebarError('fs-error', `cannot write "${path}": ${error instanceof Error ? error.message : String(error)}`, 400)
       }
       return { ok: true }
-    },
-    'lsp.project': async (payload) => {
-      const { cwd } = await cwdOf(payload)
-      const fence = fenceEnabledOf(getSettings)
-      const [workspace, path] = await Promise.all([
-        ensureWorkspacePath(cwd, cwd, fence),
-        ensureWorkspacePath(cwd, requireString(payload, 'path'), fence),
-      ])
-      return detectLspProject(workspace, path)
-    },
-    'lsp.query': async (payload) => {
-      const { cwd } = await cwdOf(payload)
-      const record = payload as { operation?: unknown }
-      const operation = record.operation
-      if (operation !== 'goToDefinition' && operation !== 'findReferences'
-        && operation !== 'goToImplementation' && operation !== 'hover') {
-        throw new SidebarError('bad-request', 'missing or invalid "operation"')
-      }
-      const path = await ensureWorkspacePath(
-        cwd,
-        requireString(payload, 'path'),
-        fenceEnabledOf(getSettings),
-      )
-      const lsp = ctx.get('lsp') as SidebarLspService | undefined
-      if (lsp === undefined) {
-        throw new SidebarError('lsp-unavailable', 'language-server service is not mounted', 503)
-      }
-      let result: Awaited<ReturnType<SidebarLspService['query']>>
-      try {
-        result = await lsp.query({ operation, filePath: path, position: lspPositionOf(payload), workspaceRoot: cwd })
-      } catch (error) {
-        throw new SidebarError('lsp-error', error instanceof Error ? error.message : String(error), 400)
-      }
-      if (result.kind === 'hover') return result
-      const locations = []
-      for (const location of result.locations) {
-        let target: string
-        try {
-          target = await ensureWorkspacePath(cwd, fileURLToPath(location.uri), fenceEnabledOf(getSettings))
-        } catch {
-          // Non-file and workspace-external server results cannot become
-          // sidebar file opens while the workspace fence is enabled.
-          continue
-        }
-        locations.push({ path: target, range: location.range })
-      }
-      return { kind: 'locations', locations }
     },
     'git.worktrees': async (payload) => {
       const { cwd } = await gitCwdOf(payload)

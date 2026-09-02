@@ -1,20 +1,16 @@
 {
   "name": "dsh-better-sidebar",
-  "version": "0.18.1-alpha.4",
+  "version": "0.18.1-alpha.5",
   "description": "DSH web plugin: a VSCode-like right sidebar (explorer / editor / terminal / git / browser), isolated per conversation session. Exposes a service for other plugins to register sidebar tabs and file viewers.",
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Islulua/dsh-code-navigator",
-    "directory": "packages/better-sidebar"
+    "url": "https://github.com/omdsh-dev/DSH-better-sidebar"
   },
   "publishConfig": {
     "access": "public"
   },
   "main": "lib/index.js",
-  "bin": {
-    "dsh-code-navigator-clangd": "./scripts/clangd-auto.mjs"
-  },
   "types": "lib/types/index.d.ts",
   "exports": {
     ".": {
@@ -69,7 +65,6 @@
     "src",
     "scripts/install.sh",
     "scripts/install.ps1",
-    "scripts/clangd-auto.mjs",
     "cordis.patch.yml",
     "README.md",
     "README_EN.md",
@@ -134,8 +129,6 @@
     "@codemirror/state": "^6.7.1",
     "@codemirror/view": "^6.43.8",
     "@lezer/highlight": "^1.2.3",
-    "@deepseek-ai/dsh-lsp": "0.1.2-alpha.3",
-    "@deepseek-ai/dsh-lsp-stdio": "0.1.2-alpha.3",
     "clsx": "^2.1.1",
     "dompurify": "^3.4.14",
     "mermaid": "^11.16.1",

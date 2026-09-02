@@ -32,16 +32,6 @@ export const cmSurfaceTheme = EditorView.theme({
     color: 'var(--dsw-alias-label-tertiary)',
     border: 'none',
   },
-  // Navigation affordance: the hovered/clickable identifier underline hint
-  // (VSCode-style). The color mixes the primary label so it stays legible in
-  // both schemes; unsupported color-mix falls back to the text color.
-  '.cm-nav-underline': {
-    textDecoration: 'underline',
-    textUnderlineOffset: '2px',
-    textDecorationThickness: '1px',
-    textDecorationColor: 'color-mix(in srgb, var(--dsw-alias-label-primary) 55%, transparent)',
-    cursor: 'pointer',
-  },
 })
 
 /** Scheme-specific surface tints (selection, active line). */

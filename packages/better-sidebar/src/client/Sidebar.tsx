@@ -9,8 +9,8 @@
  * second, independent workbench. The bottom panel squeezes ONLY the center
  * column (the agent output area): it spans from the app shell's own left
  * sidebar to the right panel's left edge, so neither sidebar gives up any
- * position (the right panel keeps its full height). A persistent control
- * cluster at the top-right hosts code-navigation and panel toggles; the right panel's
+ * position (the right panel keeps its full height). A persistent two-button
+ * cluster at the top-right corner toggles each panel; the right panel's
  * width drags from its left edge, the bottom panel's height from its top
  * edge, and the shared corner drags both at once. The whole layout lives in
  * the per-session store, so switching conversations swaps the sidebar.
@@ -31,12 +31,7 @@
 import { createElement, memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
 import { useSyncExternalStore } from 'react'
 import clsx from 'clsx'
-import {
-  IconChevronLeftOutline14,
-  IconChevronRightOutline14,
-  IconCloseFill14,
-  Tooltip,
-} from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconCloseFill14, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Context, SidebarSessionList } from '../context-types.ts'
 import { appendToDraft } from './conversation-draft.ts'
 import {
@@ -1480,36 +1475,14 @@ export function Sidebar(props: { ctx: Context; store: SidebarStore }) {
   return (
     <div data-dsh-panel-host {...osFileDragShield}>
       {/*
-        The persistent control cluster at the top-right corner: semantic
-        Back/Forward followed by the bottom- and right-panel toggles.
+        The persistent toggle cluster at the top-right corner: the bottom
+        panel's button (bottom glyph) LEFT of the right panel's (side glyph).
         Always pinned to the viewport corner — inside the right panel's
         top-right while it is open, sitting flush in the tab strip whose
         right end it really squeezes (the strip reserves its width via CSS),
         so the tabs genuinely yield space to it.
       */}
       <div className={css.toggleCluster} data-dsh-toggle-cluster>
-        <Tooltip label={t('browserBack')} side="bottom" delayMs={500}>
-          <button
-            type="button"
-            className={css.toggleButton}
-            aria-label={t('browserBack')}
-            disabled={ctx.get('betterSidebar')?.canNavigateBack({ sessionId, cwd }) !== true}
-            onClick={() => { ctx.get('betterSidebar')?.navigateBack({ sessionId, cwd }) }}
-          >
-            <IconChevronLeftOutline14 size={14} />
-          </button>
-        </Tooltip>
-        <Tooltip label={t('browserForward')} side="bottom" delayMs={500}>
-          <button
-            type="button"
-            className={css.toggleButton}
-            aria-label={t('browserForward')}
-            disabled={ctx.get('betterSidebar')?.canNavigateForward({ sessionId, cwd }) !== true}
-            onClick={() => { ctx.get('betterSidebar')?.navigateForward({ sessionId, cwd }) }}
-          >
-            <IconChevronRightOutline14 size={14} />
-          </button>
-        </Tooltip>
         {/*
           Narrow viewports merge the two workbenches into the one drawer —
           there is no bottom panel, so its toggle button is not offered.
