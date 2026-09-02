@@ -37,10 +37,90 @@ async function call<T>(method: string, scope: Scope, path: string, extra: Record
   return payload.value as T
 }
 
+/** Call the standalone browser API, which intentionally has no session dependency. */
+async function standaloneCall<T>(method: string, cwd: string, path: string, extra: Record<string, unknown> = {}): Promise<T> {
+  const response = await fetch(`/code-navigator/api/${method}`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ cwd, path, ...extra }),
+  })
+  const payload = await response.json() as { ok: boolean; value?: T; error?: string }
+  if (!response.ok || !payload.ok) throw new Error(payload.error ?? `code navigator ${method} failed`)
+  return payload.value as T
+}
+
+interface FileEntry { name: string; type: 'file' | 'directory'; path: string; size?: number }
+interface TextFile { path: string; text: string }
+
+/** Mount the lightweight navigator window used only when BetterSidebar is absent. */
+function mountStandaloneWorkbench(): () => void {
+  const launcher = document.createElement('button')
+  launcher.textContent = '⌘'
+  launcher.title = 'Code Navigator'
+  launcher.style.cssText = 'position:fixed;right:12px;top:48px;z-index:50;border:1px solid var(--dsw-alias-border-l2,#d0d7de);border-radius:6px;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#24292f);padding:6px 9px;cursor:pointer'
+  const panel = document.createElement('div')
+  panel.dataset.dshCodeNavigatorWorkbench = ''
+  panel.style.cssText = 'position:fixed;right:0;top:0;bottom:0;width:min(760px,70vw);z-index:49;display:none;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#24292f);border-left:1px solid var(--dsw-alias-border-l2,#d0d7de);font:13px system-ui,sans-serif'
+  panel.innerHTML = '<div style="height:40px;display:flex;gap:6px;align-items:center;padding:0 10px;border-bottom:1px solid var(--dsw-alias-border-l2,#d0d7de)"><strong style="white-space:nowrap">Code Navigator</strong><input data-cwd placeholder="Workspace path" style="flex:1;min-width:0"><button data-load>Open</button><button data-close>×</button></div><div style="display:flex;height:calc(100% - 40px)"><aside data-tree style="width:220px;overflow:auto;border-right:1px solid var(--dsw-alias-border-l2,#d0d7de);padding:6px"></aside><main style="flex:1;min-width:0;display:flex;flex-direction:column"><div data-status style="padding:5px 8px;border-bottom:1px solid var(--dsw-alias-border-l2,#d0d7de);color:var(--dsw-alias-label-secondary,#57606a)">Choose a workspace</div><textarea data-editor spellcheck="false" style="flex:1;border:0;resize:none;padding:10px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.5;outline:none"></textarea></main></div>'
+  document.body.append(launcher, panel)
+  const cwdInput = panel.querySelector<HTMLInputElement>('[data-cwd]')!
+  const tree = panel.querySelector<HTMLElement>('[data-tree]')!
+  const status = panel.querySelector<HTMLElement>('[data-status]')!
+  const editor = panel.querySelector<HTMLTextAreaElement>('[data-editor]')!
+  let cwd = localStorage.getItem('dsh-code-navigator:cwd') ?? ''
+  let currentPath = ''
+  cwdInput.value = cwd
+  const show = (): void => { panel.style.display = 'block'; launcher.style.display = 'none' }
+  const hide = (): void => { panel.style.display = 'none'; launcher.style.display = 'block' }
+  const openFile = async (path: string): Promise<void> => {
+    const file = await standaloneCall<TextFile>('read', cwd, path)
+    currentPath = file.path
+    editor.value = file.text
+    const project = await standaloneCall<{ server: string | null; configPath: string | null }>('project', cwd, currentPath)
+    status.textContent = `${currentPath} · ${project.server ?? 'plain text'}${project.configPath === null ? '' : ` · ${project.configPath.split('/').pop()}`}`
+    if (project.server !== null) await standaloneCall('open', cwd, currentPath)
+  }
+  const renderDirectory = async (path: string, target: HTMLElement = tree): Promise<void> => {
+    const entries = await standaloneCall<readonly FileEntry[]>('list', cwd, path)
+    target.replaceChildren(...entries.map(entry => {
+      const button = document.createElement('button')
+      button.textContent = `${entry.type === 'directory' ? '▸' : '□'} ${entry.name}`
+      button.style.cssText = 'display:block;width:100%;border:0;background:transparent;color:inherit;text-align:left;padding:3px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'
+      button.onclick = () => {
+        if (entry.type === 'file') void openFile(entry.path).catch(error => { status.textContent = String(error) })
+        else void renderDirectory(entry.path).catch(error => { status.textContent = String(error) })
+      }
+      return button
+    }))
+  }
+  const load = (): void => {
+    cwd = cwdInput.value.trim()
+    if (cwd === '') return
+    localStorage.setItem('dsh-code-navigator:cwd', cwd)
+    status.textContent = 'Loading workspace…'
+    void renderDirectory(cwd).then(() => { status.textContent = cwd }).catch(error => { status.textContent = String(error) })
+  }
+  panel.querySelector<HTMLButtonElement>('[data-load]')!.onclick = load
+  panel.querySelector<HTMLButtonElement>('[data-close]')!.onclick = hide
+  launcher.onclick = show
+  editor.addEventListener('keydown', event => {
+    if (!(event.metaKey || event.ctrlKey) || event.key !== 'Enter' || currentPath === '') return
+    event.preventDefault()
+    const before = editor.value.slice(0, editor.selectionStart)
+    const line = before.split('\n').length - 1
+    const character = before.length - (before.lastIndexOf('\n') + 1)
+    void standaloneCall<readonly { uri: string; range: { start: { line: number; character: number } } }[]>('definition', cwd, currentPath, { position: { line, character } }).then(locations => {
+      const target = locations[0]
+      if (target === undefined) { status.textContent = 'No definition found'; return }
+      const targetPath = decodeURIComponent(new URL(target.uri).pathname)
+      void openFile(targetPath).then(() => { const lines = editor.value.split('\n'); editor.selectionStart = editor.selectionEnd = lines.slice(0, target.range.start.line).join('\n').length + Math.min(target.range.start.character, lines[target.range.start.line]?.length ?? 0); editor.focus() })
+    }).catch(error => { status.textContent = String(error) })
+  })
+  return () => { launcher.remove(); panel.remove() }
+}
+
 /** Register Cmd/Ctrl-click and persistent document notifications when the sidebar is available. */
 export function apply(ctx: Context): void {
   const sidebar = ctx.get('betterSidebar') as SidebarService | undefined
-  if (sidebar === undefined) return
+  if (sidebar === undefined) { ctx.effect(mountStandaloneWorkbench, 'dsh-code-navigator: standalone workbench'); return }
   const histories = new Map<string, { entries: Array<{ path: string; line: number; character: number }>; index: number }>()
   const same = (left: { path: string; line: number; character: number }, right: { path: string; line: number; character: number }): boolean => left.path === right.path && left.line === right.line && left.character === right.character
   const move = (scope: Scope, delta: -1 | 1): void => {

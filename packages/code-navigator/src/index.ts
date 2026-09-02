@@ -41,6 +41,35 @@ interface RuntimeContext {
   webServer: { register(route: { kind: 'prefix'; path: string; handler(req: HttpRequest, res: HttpResponse): Promise<void> }): () => void }
 }
 
+/** Resolve a path below the selected workspace, rejecting directory escapes. */
+async function workspaceTarget(runtime: RuntimeContext, cwd: string, path: string) {
+  const root = await runtime.fs.resolve(cwd)
+  const target = await runtime.fs.resolve(path, { cwd })
+  if (!runtime.fs.contains(root, target)) throw new Error('path resolves outside the workspace')
+  return { root, target }
+}
+
+/** Return file-browser metadata without exposing filesystem target keys. */
+async function listFiles(runtime: RuntimeContext, cwd: string, path: string) {
+  const { target } = await workspaceTarget(runtime, cwd, path)
+  const entries = await runtime.fs.listDir(target)
+  return entries.filter(entry => entry.type === 'directory' || entry.type === 'file').map(entry => ({
+    name: entry.name,
+    type: entry.type,
+    path: runtime.fs.processPath(entry.target),
+    ...(entry.size === undefined ? {} : { size: entry.size }),
+  }))
+}
+
+/** Read a text source below the selected workspace with a fixed response cap. */
+async function readFile(runtime: RuntimeContext, cwd: string, path: string) {
+  const { target } = await workspaceTarget(runtime, cwd, path)
+  const info = await runtime.fs.stat(target)
+  if (info?.type !== 'file') throw new Error('path is not a regular file')
+  if ((info.size ?? 0) > 2_000_000) throw new Error('file exceeds the 2 MB viewer limit')
+  return { path: runtime.fs.processPath(target), text: await runtime.fs.readText(target) }
+}
+
 function runtimeOf(ctx: Context): RuntimeContext { return ctx as Context & RuntimeContext }
 function requireString(payload: unknown, key: string): string {
   const value = (payload as Record<string, unknown> | null)?.[key]
@@ -71,9 +100,11 @@ function json(res: HttpResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body))
 }
 function cwdOf(runtime: RuntimeContext, payload: unknown): string {
-  const sessionId = requireString(payload, 'sessionId')
-  const stored = runtime.sessions.get(sessionId)?.header.cwd
-  if (stored !== undefined && stored !== '') return stored
+  const sessionId = (payload as Record<string, unknown> | null)?.sessionId
+  if (typeof sessionId === 'string' && sessionId !== '') {
+    const stored = runtime.sessions.get(sessionId)?.header.cwd
+    if (stored !== undefined && stored !== '') return stored
+  }
   return requireString(payload, 'cwd')
 }
 
@@ -98,13 +129,14 @@ export async function apply(ctx: Context): Promise<void> {
       try {
         const payload = await readJson(req)
         const cwd = cwdOf(runtime, payload)
-        const path = requireString(payload, 'path')
         switch (method) {
-          case 'project': json(res, 200, { ok: true, value: await service.project(cwd, path) }); return
-          case 'open': await service.open(cwd, path); json(res, 200, { ok: true, value: null }); return
-          case 'change': await service.change(cwd, path, requireString(payload, 'text')); json(res, 200, { ok: true, value: null }); return
-          case 'close': await service.close(cwd, path); json(res, 200, { ok: true, value: null }); return
-          case 'definition': json(res, 200, { ok: true, value: await service.definition(cwd, path, positionOf(payload)) }); return
+          case 'list': json(res, 200, { ok: true, value: await listFiles(runtime, cwd, requireString(payload, 'path')) }); return
+          case 'read': json(res, 200, { ok: true, value: await readFile(runtime, cwd, requireString(payload, 'path')) }); return
+          case 'project': { const path = requireString(payload, 'path'); json(res, 200, { ok: true, value: await service.project(cwd, path) }); return }
+          case 'open': { const path = requireString(payload, 'path'); await service.open(cwd, path); json(res, 200, { ok: true, value: null }); return }
+          case 'change': { const path = requireString(payload, 'path'); await service.change(cwd, path, requireString(payload, 'text')); json(res, 200, { ok: true, value: null }); return }
+          case 'close': { const path = requireString(payload, 'path'); await service.close(cwd, path); json(res, 200, { ok: true, value: null }); return }
+          case 'definition': { const path = requireString(payload, 'path'); json(res, 200, { ok: true, value: await service.definition(cwd, path, positionOf(payload)) }); return }
           default: json(res, 404, { ok: false, error: 'unknown code navigator API method' }); return
         }
       } catch (error) { json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) }) }

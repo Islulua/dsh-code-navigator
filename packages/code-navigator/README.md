@@ -11,3 +11,5 @@ Supported servers are clangd for C/C++, Pyright for Python, and `typescript-lang
 The public lifecycle is `open`, `change`, `definition`, and `close`. A UI adapter should call `open` when a code tab opens, `change` as its document changes, and `close` when the last matching tab closes; definition calls then avoid the transient `didOpen`/`didClose` work of the standard provider.
 
 When `dsh-better-sidebar` is also enabled, the optional browser adapter adds Cmd/Ctrl-click definition lookup to code tabs, back and forward controls in the sidebar's top-right control strip, and a compact LSP project/server status line below the editor. The host navigator remains usable by other plugins without this adapter.
+
+Without BetterSidebar, the browser module mounts a lightweight right-side workbench. Enter a workspace path, browse files, open text files, and press Cmd/Ctrl+Enter at the cursor to follow a definition. The workbench is not mounted when BetterSidebar is available, so the two plugins never create competing editor panes.
