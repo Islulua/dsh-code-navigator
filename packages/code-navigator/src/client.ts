@@ -101,9 +101,8 @@ function mountStandaloneWorkbench(): () => void {
   panel.querySelector<HTMLButtonElement>('[data-load]')!.onclick = load
   panel.querySelector<HTMLButtonElement>('[data-close]')!.onclick = hide
   launcher.onclick = show
-  editor.addEventListener('keydown', event => {
-    if (!(event.metaKey || event.ctrlKey) || event.key !== 'Enter' || currentPath === '') return
-    event.preventDefault()
+  const jumpAtCursor = (): void => {
+    if (currentPath === '') return
     const before = editor.value.slice(0, editor.selectionStart)
     const line = before.split('\n').length - 1
     const character = before.length - (before.lastIndexOf('\n') + 1)
@@ -113,6 +112,16 @@ function mountStandaloneWorkbench(): () => void {
       const targetPath = decodeURIComponent(new URL(target.uri).pathname)
       void openFile(targetPath).then(() => { const lines = editor.value.split('\n'); editor.selectionStart = editor.selectionEnd = lines.slice(0, target.range.start.line).join('\n').length + Math.min(target.range.start.character, lines[target.range.start.line]?.length ?? 0); editor.focus() })
     }).catch(error => { status.textContent = String(error) })
+  }
+  editor.addEventListener('click', event => {
+    if (!(event.metaKey || event.ctrlKey)) return
+    event.preventDefault()
+    jumpAtCursor()
+  })
+  editor.addEventListener('keydown', event => {
+    if (!(event.metaKey || event.ctrlKey) || event.key !== 'Enter') return
+    event.preventDefault()
+    jumpAtCursor()
   })
   return () => { launcher.remove(); panel.remove() }
 }
