@@ -20,6 +20,8 @@ export type SidebarErrorCode =
   | 'job-error'
   | 'sidechat-error'
   | 'subagents-unavailable'
+  | 'lsp-unavailable'
+  | 'lsp-error'
   | 'settings-rejected'
   | 'settings-conflict'
   | 'internal'

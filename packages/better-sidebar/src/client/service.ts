@@ -265,6 +265,8 @@ export interface FileViewerProps {
   mediaUrl?: string
   /** custom load() return value (fetchStrategy='custom'). */
   customData?: unknown
+  /** A semantic-navigation target for viewers that can position a cursor. */
+  navigation?: SourceLocation & { revision: number }
   /** Internal (built-in text editor): 'host' asks the viewer to skip its own
    *  toolbar row — the editor host's merged-mode header renders it instead,
    *  fed through the two callbacks below. Viewers that ignore these fields
@@ -403,7 +405,7 @@ export interface BetterSidebarService {
   /**
    * Monotonic capability list (v0.12.0+): 'badge' | 'tabLifecycle' |
    * 'updateTab' | 'openFile' | 'targetedOpen' | 'stateSubscription' |
-   * 'tabMeta' | 'pluginSettings'. Features are never removed — consumers
+   * 'tabMeta' | 'pluginSettings' | 'openLocation'. Features are never removed — consumers
    * gate new API usage on membership.
    */
   readonly features: readonly string[]
@@ -425,6 +427,15 @@ export interface BetterSidebarService {
   activateTab(tabId: string, scope?: SessionScope): void
   /** Open a file in the sidebar editor of `scope`'s session (title defaults to the file name). */
   openFile(scope: SessionScope, path: string, title?: string): void
+  /** Open a source location and reveal its zero-based UTF-16 cursor position. */
+  openLocation(scope: SessionScope, location: SourceLocation, title?: string): void
+}
+
+/** A file and zero-based UTF-16 cursor coordinate. */
+export interface SourceLocation {
+  path: string
+  line: number
+  character: number
 }
 
 /** Extract the lowercase extension without leading dot from a path. */
@@ -490,6 +501,7 @@ export const SIDEBAR_SERVICE_VERSION = '0.18.1-alpha.0'
  * - 'floatWindows' (v0.16.0): tabs float as free windows — openTab's dedupe/
  *   id focus targets RAISE the floating window (never duplicate the tab or
  *   expand panels), closeTab on a floating tab closes it with its window.
+ * - 'openLocation': open a file and reveal a zero-based UTF-16 coordinate.
  */
 export const SIDEBAR_FEATURES = [
   'badge',
@@ -503,6 +515,7 @@ export const SIDEBAR_FEATURES = [
   'urlTarget',
   'settingSelect',
   'floatWindows',
+  'openLocation',
 ] as const
 
 /** Run one plugin callback; a throw is logged and never breaks the caller. */
@@ -523,6 +536,7 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
   const tabs = new Map<string, TabDescriptor>()
   const viewers = new Map<string, FileViewerDescriptor>()
   const listeners = new Set<() => void>()
+  let navigationRevision = 0
 
   const notify = (): void => {
     for (const fn of [...listeners]) fn()
@@ -817,6 +831,24 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
     openTab({ type: 'editor', title: title ?? baseNameOf(path), path, id: `editor:${path}` }, scope)
   }
 
+  const openLocation = (scope: SessionScope, location: SourceLocation, title?: string): void => {
+    openFile(scope, location.path, title)
+    const patchLocation = (state: SidebarState): SidebarState => {
+      const tabs = allLeaves(state.splits).concat(allLeaves(state.bottomSplits)).flatMap(leaf => leaf.tabs)
+        .concat(state.floats.map(float => float.tab))
+      const tab = tabs.find(candidate => candidate.type === 'editor' && candidate.path === location.path)
+      if (tab === undefined) return state
+      const meta = tab.meta !== null && typeof tab.meta === 'object' && !Array.isArray(tab.meta)
+        ? tab.meta as Record<string, unknown>
+        : {}
+      return patchTab(state, tab.id, {
+        meta: { ...meta, navigation: { ...location, revision: ++navigationRevision } },
+      })
+    }
+    if (store.getSnapshot().sessionId === scope.sessionId) store.reduce(patchLocation)
+    else store.reduceFor(scope.sessionId, patchLocation)
+  }
+
   return {
     registerTab,
     registerFileViewer,
@@ -836,6 +868,7 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
     updateTab,
     activateTab,
     openFile,
+    openLocation,
   }
 }
 

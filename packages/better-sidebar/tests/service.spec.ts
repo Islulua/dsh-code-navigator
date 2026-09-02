@@ -797,6 +797,29 @@ describe('openFile (v0.12.0)', () => {
   })
 })
 
+describe('openLocation', () => {
+  it('opens the definition target and publishes a fresh cursor revision', () => {
+    const store = createSidebarStore()
+    const service = createBetterSidebarService(store)
+    service.registerTab({ id: 'editor', title: () => 'Editor', dedupeKey: tab => tab.path, component: () => null })
+    store.setSession('s1')
+
+    service.openLocation({ sessionId: 's1', cwd: '/p' }, { path: '/p/include/api.h', line: 7, character: 3 })
+    const first = allLeaves(store.getSnapshot().state!.splits).flatMap(leaf => leaf.tabs)
+      .find(tab => tab.path === '/p/include/api.h')
+    expect(first?.meta).toMatchObject({
+      navigation: { path: '/p/include/api.h', line: 7, character: 3, revision: 1 },
+    })
+
+    service.openLocation({ sessionId: 's1', cwd: '/p' }, { path: '/p/include/api.h', line: 9, character: 1 })
+    const second = allLeaves(store.getSnapshot().state!.splits).flatMap(leaf => leaf.tabs)
+      .find(tab => tab.path === '/p/include/api.h')
+    expect(second?.meta).toMatchObject({
+      navigation: { path: '/p/include/api.h', line: 9, character: 1, revision: 2 },
+    })
+  })
+})
+
 describe('tab lifecycle callbacks (v0.12.0)', () => {
   /** A descriptor with recording callbacks, plus a count of onOpen/onActivate/onClose. */
   const setup = () => {

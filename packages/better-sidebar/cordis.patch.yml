@@ -44,6 +44,26 @@
 # it, and no runtime singleton guard is added. Same-id manual duplicates still
 # fail loudly at the loader as before.
 - insert:
+    - id: code-navigator-lsp
+      name: '@deepseek-ai/dsh-lsp'
+      disabled: !!js "[...ctx.loader.entries()].some((e) => e.options.name === '@deepseek-ai/dsh-lsp' && e.options.id !== 'code-navigator-lsp' && !e.disabled)"
+    - id: code-navigator-clangd
+      name: '@deepseek-ai/dsh-lsp-stdio'
+      config:
+        servers:
+          code-navigator-clangd:
+            command: clangd
+            args:
+              - --background-index
+            extensionToLanguage:
+              '.c': c
+              '.cc': cpp
+              '.cpp': cpp
+              '.cxx': cpp
+              '.h': cpp
+              '.hh': cpp
+              '.hpp': cpp
+              '.hxx': cpp
     - id: better-sidebar
       name: 'dsh-better-sidebar'
       disabled: !!js "[...ctx.loader.entries()].some((e) => e.options.name === 'dsh-better-sidebar' && e.options.id !== 'better-sidebar' && !e.disabled)"

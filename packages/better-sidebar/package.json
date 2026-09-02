@@ -5,7 +5,8 @@
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "https://github.com/omdsh-dev/DSH-better-sidebar"
+    "url": "https://github.com/Islulua/dsh-code-navigator",
+    "directory": "packages/better-sidebar"
   },
   "publishConfig": {
     "access": "public"
@@ -129,6 +130,8 @@
     "@codemirror/state": "^6.7.1",
     "@codemirror/view": "^6.43.8",
     "@lezer/highlight": "^1.2.3",
+    "@deepseek-ai/dsh-lsp": "0.1.2-alpha.3",
+    "@deepseek-ai/dsh-lsp-stdio": "0.1.2-alpha.3",
     "clsx": "^2.1.1",
     "dompurify": "^3.4.14",
     "mermaid": "^11.16.1",

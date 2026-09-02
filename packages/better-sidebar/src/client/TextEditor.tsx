@@ -58,7 +58,7 @@ interface SelectionPopup {
 export const HTML_IFRAME_SANDBOX = 'allow-scripts allow-popups allow-downloads allow-modals'
 
 export function TextEditor(props: FileViewerProps) {
-  const { ctx, scope, path, viewerId, content, truncated } = props
+  const { ctx, scope, path, viewerId, content, truncated, navigation } = props
   const [mode, setMode] = useState<ViewMode>('preview')
   /** The editor's current text (null while clean); preview renders this. */
   const [draft, setDraft] = useState<string | null>(null)
@@ -157,6 +157,33 @@ export function TextEditor(props: FileViewerProps) {
         // its head. Scrolling (geometry/viewport change) or losing focus
         // hides it; typing collapses the selection and hides it too.
         ...(viewerId === 'code' || viewerId === 'markdown' ? [
+          CodeMirrorView.domEventHandlers({
+            click: (event, view) => {
+              if (event.button !== 0 || (!event.metaKey && !event.ctrlKey)) return false
+              const position = view.posAtCoords({ x: event.clientX, y: event.clientY })
+              if (position === null) return false
+              event.preventDefault()
+              const line = view.state.doc.lineAt(position)
+              const controller = new AbortController()
+              void api.lspDefinition(scope, path, {
+                line: line.number - 1,
+                character: position - line.from,
+              }, controller.signal).then((result) => {
+                const target = result.locations[0]
+                if (target === undefined) return
+                ctx.get('betterSidebar')?.openLocation(scope, {
+                  path: target.path,
+                  line: target.range.start.line,
+                  character: target.range.start.character,
+                })
+              }).catch((error: unknown) => {
+                if (!(error instanceof DOMException && error.name === 'AbortError')) {
+                  console.error('[dsh-better-sidebar] definition lookup failed:', error)
+                }
+              })
+              return true
+            },
+          }),
           CodeMirrorView.updateListener.of((update) => {
             if (update.geometryChanged || update.viewportChanged) {
               hidePopup()
@@ -208,6 +235,21 @@ export function TextEditor(props: FileViewerProps) {
     // tab's lifetime, and the dark flip is handled by the reconfigure
     // effect below (recreating the view here would drop the draft).
   }, [content, path])
+
+  // A definition jump can target an already-open editor. Re-select and
+  // center it whenever the service publishes a new navigation revision.
+  useEffect(() => {
+    if (navigation === undefined || navigation.path !== path) return
+    const view = viewRef.current
+    if (view === null || navigation.line >= view.state.doc.lines) return
+    const line = view.state.doc.line(navigation.line + 1)
+    const position = Math.min(line.to, line.from + navigation.character)
+    view.dispatch({
+      selection: { anchor: position },
+      effects: CodeMirrorView.scrollIntoView(position, { y: 'center' }),
+    })
+    view.focus()
+  }, [navigation?.revision, path])
 
   // Scheme flip: re-theme in place (the compartment holds only the
   // scheme-dependent extensions; everything else is untouched).

@@ -5,16 +5,17 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve as resolvePath } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { SettingsConflictError, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import { apply, mediaTypeForPath } from '../src/index.ts'
 import { encodeHtmlUrl } from '../src/html-route.ts'
 import * as git from '../src/git.ts'
 import { listDirectory } from '../src/fs-tree.ts'
 import { defaultShell, PtyManager, type SidebarPty } from '../src/pty-manager.ts'
-import type { SidebarWebRoute, SidebarWebUpgradeRoute } from '../src/context-types.ts'
+import type { SidebarLspService, SidebarWebRoute, SidebarWebUpgradeRoute } from '../src/context-types.ts'
 
 /** Symlink creation may require elevated privileges on Windows. */
 const canCreateSymlink = (() => {
@@ -486,6 +487,7 @@ describe('session cwd resolution over the API route', () => {
   interface CtxOverrides {
     sessions?: { get: (id: string) => { header: { cwd?: string } } | undefined }
     sessionPersistence?: { inspect: (id: string) => Promise<{ meta: { cwd?: string } }> }
+    lsp?: SidebarLspService
   }
 
   const mountAll = (overrides: CtxOverrides = {}): SidebarWebRoute[] => {
@@ -503,7 +505,11 @@ describe('session cwd resolution over the API route', () => {
       // No settings service: the namespace registration never runs.
       inject: () => () => {},
       // No jobs/agents services in the smoke context: the routes degrade.
-      get: (key: string) => key === 'sessionPersistence' ? overrides.sessionPersistence : undefined,
+      get: (key: string) => {
+        if (key === 'sessionPersistence') return overrides.sessionPersistence
+        if (key === 'lsp') return overrides.lsp
+        return undefined
+      },
     }
     apply(ctx as never)
     return routes
@@ -620,6 +626,67 @@ describe('session cwd resolution over the API route', () => {
     const result = await invoke(route, 'session.cwd', { sessionId: 's-detached', cwd: 'relative/path' })
     expect(result.ok).toBe(false)
     expect(result.error?.message).toMatch(/invalid working directory/)
+  })
+
+  it('resolves an LSP definition and returns a workspace-contained file target', async () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'dsh-sidebar-lsp-'))
+    const source = join(workspace, 'main.cpp')
+    const target = join(workspace, 'api.hpp')
+    writeFileSync(source, 'int main() { return answer(); }\n')
+    writeFileSync(target, 'int answer();\n')
+    const canonicalWorkspace = realpathSync(workspace)
+    const canonicalSource = realpathSync(source)
+    const canonicalTarget = realpathSync(target)
+    const queries: unknown[] = []
+    const lsp: SidebarLspService = {
+      query: async (request) => {
+        queries.push(request)
+        return {
+          kind: 'locations',
+          resolvedWorkspaceUri: pathToFileURL(canonicalWorkspace).href,
+          locations: [{
+            uri: pathToFileURL(canonicalTarget).href,
+            range: { start: { line: 0, character: 4 }, end: { line: 0, character: 10 } },
+          }],
+        }
+      },
+    }
+    try {
+      const route = mount({ sessions: { get: () => ({ header: { cwd: workspace } }) }, lsp })
+      const result = await invoke(route, 'lsp.query', {
+        sessionId: 's-lsp', operation: 'goToDefinition', path: source, line: 0, character: 20,
+      }) as unknown as { ok: boolean; value: unknown }
+      expect(result).toMatchObject({
+        ok: true,
+        value: {
+          kind: 'locations',
+          locations: [{ path: canonicalTarget, range: { start: { line: 0, character: 4 } } }],
+        },
+      })
+      expect(queries).toEqual([{
+        operation: 'goToDefinition',
+        filePath: canonicalSource,
+        position: { line: 0, character: 20 },
+        workspaceRoot: workspace,
+      }])
+    } finally {
+      rmSync(workspace, { recursive: true, force: true })
+    }
+  })
+
+  it('reports a missing host LSP capability without starting a query', async () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'dsh-sidebar-lsp-'))
+    const source = join(workspace, 'main.cpp')
+    writeFileSync(source, 'int main() {}\n')
+    try {
+      const route = mount({ sessions: { get: () => ({ header: { cwd: workspace } }) } })
+      const result = await invoke(route, 'lsp.query', {
+        sessionId: 's-lsp', operation: 'goToDefinition', path: source, line: 0, character: 4,
+      })
+      expect(result).toMatchObject({ ok: false, status: 503, error: { code: 'lsp-unavailable' } })
+    } finally {
+      rmSync(workspace, { recursive: true, force: true })
+    }
   })
 
   it('pty.close releases a terminal key (and rejects a missing tab)', async () => {
