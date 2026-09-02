@@ -79,6 +79,32 @@ export function apply(ctx: Context): void {
         setStatus('updating')
         timer = window.setTimeout(() => { void call('change', scope, path, { text }).then(() => { setStatus('ready') }).catch(error => { setStatus('failed'); console.error(error) }) }, 120)
       })
+      let hover: HTMLElement | undefined
+      let hoverDecoration: { textDecoration: string; textUnderlineOffset: string; cursor: string } | undefined
+      let lastTarget: EventTarget | null = null
+      const clearHover = (): void => {
+        if (hover === undefined || hoverDecoration === undefined) return
+        hover.style.textDecoration = hoverDecoration.textDecoration
+        hover.style.textUnderlineOffset = hoverDecoration.textUnderlineOffset
+        hover.style.cursor = hoverDecoration.cursor
+        hover = undefined
+        hoverDecoration = undefined
+      }
+      const updateHover = (target: EventTarget | null, modified: boolean): void => {
+        lastTarget = target
+        if (!modified || !(target instanceof Element)) { clearHover(); return }
+        const candidate = target.closest('span')
+        if (candidate === null || !dom.contains(candidate)) { clearHover(); return }
+        if (candidate === hover) return
+        clearHover()
+        hover = candidate as HTMLElement
+        hoverDecoration = { textDecoration: hover.style.textDecoration, textUnderlineOffset: hover.style.textUnderlineOffset, cursor: hover.style.cursor }
+        hover.style.textDecoration = 'underline'
+        hover.style.textUnderlineOffset = '2px'
+        hover.style.cursor = 'pointer'
+      }
+      const mousemove = (event: MouseEvent): void => { updateHover(event.target, event.metaKey || event.ctrlKey) }
+      const modifierChange = (event: KeyboardEvent): void => { updateHover(lastTarget, event.metaKey || event.ctrlKey) }
       const click = (event: MouseEvent): void => {
         if (event.button !== 0 || !(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return
         const position = posAtCoords({ x: event.clientX, y: event.clientY })
@@ -96,7 +122,20 @@ export function apply(ctx: Context): void {
         }).catch(error => { console.error('[dsh-code-navigator] definition lookup failed:', error) })
       }
       dom.addEventListener('click', click)
-      return () => { if (timer !== undefined) window.clearTimeout(timer); offChange(); dom.removeEventListener('click', click); status.remove(); void call('close', scope, path).catch(console.error) }
+      dom.addEventListener('mousemove', mousemove)
+      window.addEventListener('keydown', modifierChange)
+      window.addEventListener('keyup', modifierChange)
+      return () => {
+        if (timer !== undefined) window.clearTimeout(timer)
+        offChange()
+        clearHover()
+        dom.removeEventListener('click', click)
+        dom.removeEventListener('mousemove', mousemove)
+        window.removeEventListener('keydown', modifierChange)
+        window.removeEventListener('keyup', modifierChange)
+        status.remove()
+        void call('close', scope, path).catch(console.error)
+      }
   }), 'dsh-code-navigator: BetterSidebar adapter')
   ctx.effect(() => {
     const back = sidebar.registerTopBarAction({ id: 'dsh-code-navigator:back', title: 'Go Back', icon: 'back', onClick: scope => { move(scope, -1) } })
