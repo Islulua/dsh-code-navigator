@@ -36,6 +36,7 @@ import { ensureWorkspacePath, ensureWorkspaceWritePath } from './path-security.t
 import { searchFiles } from './fs-search.ts'
 import { decodeHtmlUrl } from './html-route.ts'
 import { extractFrameAncestors } from './browser-probe.ts'
+import { detectLspProject } from './lsp-project.ts'
 import { isTrustedApiRequest, isLoopbackHostname } from './trust-fence.ts'
 import { registerBundleRoute } from './bundle-route.ts'
 import { launchExternal } from './open-external.ts'
@@ -378,6 +379,15 @@ function buildApi(
         throw new SidebarError('fs-error', `cannot write "${path}": ${error instanceof Error ? error.message : String(error)}`, 400)
       }
       return { ok: true }
+    },
+    'lsp.project': async (payload) => {
+      const { cwd } = await cwdOf(payload)
+      const fence = fenceEnabledOf(getSettings)
+      const [workspace, path] = await Promise.all([
+        ensureWorkspacePath(cwd, cwd, fence),
+        ensureWorkspacePath(cwd, requireString(payload, 'path'), fence),
+      ])
+      return detectLspProject(workspace, path)
     },
     'lsp.query': async (payload) => {
       const { cwd } = await cwdOf(payload)

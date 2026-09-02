@@ -108,6 +108,12 @@ export interface LspLocation {
 /** Result of a definition query from the sidebar editor. */
 export interface LspLocationsResult { kind: 'locations'; locations: LspLocation[] }
 
+/** Language server and project configuration detected for one source file. */
+export interface LspProjectInfo {
+  server: 'clangd' | 'pyright' | 'typescript-language-server' | 'lsp'
+  configPath: string | null
+}
+
 /**
  * One jobs.output response: the output the MODEL has read so far for the
  * job (replayed from the owner session's event log — the model's
@@ -242,6 +248,9 @@ export const api = {
     call<FsTextResult | FsBinaryResult>('fs.read', scopePayload(scope, { path }), signal),
   fsWrite: (scope: SessionScope, path: string, content: string) =>
     call<{ ok: true }>('fs.write', scopePayload(scope, { path, content })),
+  /** Detect the project configuration used to warm one source file. */
+  lspProject: (scope: SessionScope, path: string, signal?: AbortSignal) =>
+    call<LspProjectInfo>('lsp.project', scopePayload(scope, { path }), signal),
   /** Resolve the symbol at a zero-based UTF-16 source coordinate. */
   lspDefinition: (scope: SessionScope, path: string, position: LspPosition, signal?: AbortSignal) =>
     call<LspLocationsResult>('lsp.query', scopePayload(scope, {

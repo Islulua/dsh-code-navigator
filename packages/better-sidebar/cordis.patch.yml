@@ -52,8 +52,9 @@
       config:
         servers:
           code-navigator-clangd:
-            command: clangd
+            command: node
             args:
+              - !!js "process.platform === 'win32' ? decodeURIComponent(new URL('./node_modules/dsh-better-sidebar/scripts/clangd-auto.mjs', baseUrl).pathname.slice(1)) : decodeURIComponent(new URL('./node_modules/dsh-better-sidebar/scripts/clangd-auto.mjs', baseUrl).pathname)"
               - --background-index
             extensionToLanguage:
               '.c': c
@@ -64,6 +65,10 @@
               '.hh': cpp
               '.hpp': cpp
               '.hxx': cpp
+              '.inc': cpp
+              '.inl': cpp
+              '.ipp': cpp
+              '.tpp': cpp
     - id: code-navigator-python-typescript
       name: '@deepseek-ai/dsh-lsp-stdio'
       config:

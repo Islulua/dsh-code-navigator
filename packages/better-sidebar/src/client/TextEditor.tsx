@@ -48,6 +48,14 @@ interface SelectionPopup {
   top: number
 }
 
+/** User-visible progress of the default-on language-server warm-up. */
+interface LspWarmupStatus {
+  phase: 'detecting' | 'loading' | 'ready' | 'failed'
+  server: string
+  config: string | null
+  elapsedMs?: number
+}
+
 /**
  * The sandbox tokens of the HTML preview iframe. NO allow-same-origin (the
  * preview must stay in an opaque origin — with the route's own origin it
@@ -118,6 +126,7 @@ export function TextEditor(props: FileViewerProps) {
   const [draft, setDraft] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
+  const [lspWarmup, setLspWarmup] = useState<LspWarmupStatus | null>(null)
   const hostRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<CodeMirrorView | null>(null)
   const savingRef = useRef(false)
@@ -409,7 +418,10 @@ export function TextEditor(props: FileViewerProps) {
   // file preamble before the user asks to jump. Users can disable it in the
   // Code viewer settings when background project I/O is undesirable.
   useEffect(() => {
-    if (!preloadCompileCommands || viewerId !== 'code' || content === undefined) return
+    if (!preloadCompileCommands || viewerId !== 'code' || content === undefined) {
+      setLspWarmup(null)
+      return
+    }
     const view = viewRef.current
     if (view === null) return
     const match = /[A-Za-z_][A-Za-z0-9_]*/.exec(content)
@@ -417,12 +429,34 @@ export function TextEditor(props: FileViewerProps) {
     const line = view.state.doc.lineAt(offset)
     const character = offset - line.from
     const key = `${path}|${line.number - 1}|${character}`
-    if (navCacheRef.current.has(key)) return
     const controller = new AbortController()
-    void api.lspDefinition(scope, path, { line: line.number - 1, character }, controller.signal)
-      .then((result) => { navCacheRef.current.set(key, result) })
+    const started = performance.now()
+    setLspWarmup({ phase: 'detecting', server: 'LSP', config: null })
+    void api.lspProject(scope, path, controller.signal)
+      .then(async (project) => {
+        const config = project.configPath?.split(/[\\/]/).pop() ?? null
+        setLspWarmup({ phase: 'loading', server: project.server, config })
+        const cached = navCacheRef.current.get(key)
+        const result = cached === undefined
+          ? await api.lspDefinition(scope, path, { line: line.number - 1, character }, controller.signal)
+          : cached
+        if (result !== null) navCacheRef.current.set(key, result)
+        setLspWarmup({
+          phase: 'ready',
+          server: project.server,
+          config,
+          elapsedMs: Math.round(performance.now() - started),
+        })
+      })
       .catch((error: unknown) => {
-        if (!(error instanceof DOMException && error.name === 'AbortError')) navCacheRef.current.set(key, null)
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        navCacheRef.current.set(key, null)
+        setLspWarmup({
+          phase: 'failed',
+          server: 'LSP',
+          config: null,
+          elapsedMs: Math.round(performance.now() - started),
+        })
       })
     return () => { controller.abort() }
   }, [content, path, preloadCompileCommands, scope.sessionId, scope.cwd, viewerId])
@@ -628,6 +662,20 @@ export function TextEditor(props: FileViewerProps) {
             ref={hostRef}
           />
         </>
+      )}
+      {viewerId === 'code' && lspWarmup !== null && (
+        <div className={clsx(css.lspStatusBar, lspWarmup.phase === 'failed' && css.lspStatusFailed)}>
+          <span className={clsx(css.lspStatusDot, (lspWarmup.phase === 'detecting' || lspWarmup.phase === 'loading') && css.lspStatusBusy)} />
+          <span className={css.lspStatusText} title={[lspWarmup.server, lspWarmup.config].filter(Boolean).join(' · ')}>
+            {[lspWarmup.server, lspWarmup.config].filter(Boolean).join(' · ')}
+            {' · '}
+            {lspWarmup.phase === 'failed'
+              ? t('error')
+              : lspWarmup.phase === 'ready'
+                ? `✓ ${lspWarmup.elapsedMs ?? 0} ms`
+                : t('loading')}
+          </span>
+        </div>
       )}
       {markdown && mode === 'preview' && (
         <div

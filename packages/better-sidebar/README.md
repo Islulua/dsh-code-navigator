@@ -9,7 +9,7 @@
   <a href="https://github.com/omdsh-dev/DSH-better-sidebar/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/omdsh-dev/DSH-better-sidebar" /></a>
   <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg" /></a>
   <a href="https://dshfind.com/zh/plugins/omdsh-dev/DSH-better-sidebar?ref=badge"><img alt="dshfind" src="https://dshfind.com/api/badge/omdsh-dev/DSH-better-sidebar?lang=zh" /></a><br /><br />
-  <a href="https://www.npmjs.com/package/@deepseek-ai/dsh?activeTab=versions"><img alt="支持的 DSH 版本（v0.18.1-alpha.2 alpha 通道）：0.1.2-alpha.3" src="https://img.shields.io/badge/DSH-0.1.2--alpha.3_(alpha%20%E9%80%9A%E9%81%93)-4d6bfe" /></a>
+  <a href="https://www.npmjs.com/package/@deepseek-ai/dsh?activeTab=versions"><img alt="支持的 DSH 版本（v0.18.1-alpha.4 alpha 通道）：0.1.2-alpha.3" src="https://img.shields.io/badge/DSH-0.1.2--alpha.3_(alpha%20%E9%80%9A%E9%81%93)-4d6bfe" /></a>
   <a href="https://github.com/topics/dsh-better-sidebar"><img alt="插件生态：GitHub topic dsh-better-sidebar" src="https://img.shields.io/badge/%E6%8F%92%E4%BB%B6%E7%94%9F%E6%80%81-topic%20dsh--better--sidebar-4d6bfe" /></a><br /><br />
   <img alt="文件管理" src="https://img.shields.io/badge/-文件管理-4d6bfe" /> <img alt="编辑预览" src="https://img.shields.io/badge/-编辑预览-4d6bfe" /> <img alt="内嵌浏览器" src="https://img.shields.io/badge/-内嵌浏览器-4d6bfe" /> <img alt="真实终端" src="https://img.shields.io/badge/-真实终端-4d6bfe" /> <img alt="文件变动" src="https://img.shields.io/badge/-文件变动-4d6bfe" /> <img alt="后台任务" src="https://img.shields.io/badge/-后台任务-4d6bfe" /> <img alt="侧边对话" src="https://img.shields.io/badge/-侧边对话-4d6bfe" /> <img alt="插件接入" src="https://img.shields.io/badge/-插件接入-4d6bfe" /><br /><br />
   <b>右侧栏 + 底部面板双工作台</b>，并把 <code>ctx.betterSidebar</code> 服务开放给所有插件——<br />
@@ -62,7 +62,7 @@
 **前置**：已装好 DSH（`dsh web` 能正常运行），Node.js ≥ 20、pnpm ≥ 10。
 
 **支持的 DSH 版本**：
-<a href="https://www.npmjs.com/package/@deepseek-ai/dsh?activeTab=versions"><img alt="支持的 DSH 版本（v0.18.1-alpha.2 alpha 通道）：0.1.2-alpha.3" src="https://img.shields.io/badge/DSH-0.1.2--alpha.3_(alpha%20%E9%80%9A%E9%81%93)-4d6bfe" /></a>
+<a href="https://www.npmjs.com/package/@deepseek-ai/dsh?activeTab=versions"><img alt="支持的 DSH 版本（v0.18.1-alpha.4 alpha 通道）：0.1.2-alpha.3" src="https://img.shields.io/badge/DSH-0.1.2--alpha.3_(alpha%20%E9%80%9A%E9%81%93)-4d6bfe" /></a>
 
 > 🧪 **alpha 通道**：`v0.18.0-alpha.0` 起适配 DSH **0.1.2-alpha.x**（npm dist-tag `alpha`），不再支持 0.1.0-rc.8 ~ 0.1.1-rc.2——DSH stable 用户请继续用 `@latest`（v0.17.1）；DSH 0.1.2-alpha.3 用户安装 `dsh-better-sidebar@alpha`。
 
@@ -258,7 +258,12 @@ GitHub topic [`dsh-better-sidebar`](https://github.com/topics/dsh-better-sidebar
 
 ## 🆕 最近更新
 
-**支持的 DSH 版本**：<a href="https://www.npmjs.com/package/@deepseek-ai/dsh?activeTab=versions"><img alt="支持的 DSH 版本（v0.18.1-alpha.2 alpha 通道）：0.1.2-alpha.3" src="https://img.shields.io/badge/DSH-0.1.2--alpha.3_(alpha%20%E9%80%9A%E9%81%93)-4d6bfe" /></a> · 完整发布历史见 [Releases](https://github.com/omdsh-dev/DSH-better-sidebar/releases)
+**支持的 DSH 版本**：<a href="https://www.npmjs.com/package/@deepseek-ai/dsh?activeTab=versions"><img alt="支持的 DSH 版本（v0.18.1-alpha.4 alpha 通道）：0.1.2-alpha.3" src="https://img.shields.io/badge/DSH-0.1.2--alpha.3_(alpha%20%E9%80%9A%E9%81%93)-4d6bfe" /></a> · 完整发布历史见 [Releases](https://github.com/omdsh-dev/DSH-better-sidebar/releases)
+
+### v0.18.1-alpha.4
+
+- ⚡ **按工作区自动选择 clangd 编译数据库**：clangd 启动器以当前会话 `cwd` 为根，优先识别根目录、`build/`、`out/build/`，再进行深度和目录数受限的搜索，并自动传入 `--compile-commands-dir`；补充 `.inc/.inl/.ipp/.tpp` 等常见 C++ 模板与生成头文件映射。
+- 📊 **语言服务状态栏**：代码编辑器底部显示项目配置检测、语言服务启动/解析、可导航耗时或失败状态；C++、Python 与 TypeScript 分别展示检测到的常用项目配置。
 
 ### v0.18.1-alpha.2
 
