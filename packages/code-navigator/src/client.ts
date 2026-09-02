@@ -14,9 +14,9 @@ interface EditorContext {
   posAtCoords(coords: { x: number; y: number }): number | null
   onDocumentChange(listener: (text: string) => void): () => void
 }
-interface ContextWithSidebar extends Context { betterSidebar: SidebarService }
-
-export const inject = ['betterSidebar']
+// The host service is independent. The sidebar is only an optional browser
+// adapter, so it must never make this client module wait for activation.
+export const inject: readonly string[] = []
 
 function locationAt(text: string, position: number): { line: number; character: number; start: number } {
   const before = text.slice(0, position)
@@ -39,7 +39,8 @@ async function call<T>(method: string, scope: Scope, path: string, extra: Record
 
 /** Register Cmd/Ctrl-click and persistent document notifications when the sidebar is available. */
 export function apply(ctx: Context): void {
-  const sidebar = (ctx as ContextWithSidebar).betterSidebar
+  const sidebar = ctx.get('betterSidebar') as SidebarService | undefined
+  if (sidebar === undefined) return
   const histories = new Map<string, { entries: Array<{ path: string; line: number; character: number }>; index: number }>()
   const same = (left: { path: string; line: number; character: number }, right: { path: string; line: number; character: number }): boolean => left.path === right.path && left.line === right.line && left.character === right.character
   const move = (scope: Scope, delta: -1 | 1): void => {
