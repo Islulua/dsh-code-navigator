@@ -66,6 +66,17 @@ function metaOf(tab: SidebarTab): Record<string, unknown> {
     : {}
 }
 
+/** Read a validated source-location request from the tab's persisted meta. */
+function navigationOf(tab: SidebarTab): { path: string; line: number; character: number; revision: number } | undefined {
+  const value = metaOf(tab).navigation
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const record = value as Record<string, unknown>
+  return typeof record.path === 'string' && Number.isInteger(record.line) && (record.line as number) >= 0
+    && Number.isInteger(record.character) && (record.character as number) >= 0 && Number.isInteger(record.revision)
+    ? record as { path: string; line: number; character: number; revision: number }
+    : undefined
+}
+
 /** Read the persisted tree-panel flag of one editor tab: an explicit
  *  boolean meta wins; otherwise path-less tabs (the seeded home) default
  *  open and file tabs default closed. */
@@ -473,6 +484,7 @@ export function EditorHost(props: {
             truncated: load.truncated,
             mediaUrl: load.mediaUrl,
             customData: load.customData,
+            navigation: navigationOf(tab),
             // The viewer's toolbar always hoists into this host's header.
             toolbar: 'host',
             onToolbarState,

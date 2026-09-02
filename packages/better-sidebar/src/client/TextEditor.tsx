@@ -58,17 +58,26 @@ interface SelectionPopup {
 export const HTML_IFRAME_SANDBOX = 'allow-scripts allow-popups allow-downloads allow-modals'
 
 export function TextEditor(props: FileViewerProps) {
-  const { ctx, scope, path, viewerId, content, truncated } = props
+  const { ctx, scope, path, viewerId, content, truncated, navigation } = props
   const [mode, setMode] = useState<ViewMode>('preview')
   /** The editor's current text (null while clean); preview renders this. */
   const [draft, setDraft] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
+  const [editorExtensionRevision, setEditorExtensionRevision] = useState(0)
   const hostRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<CodeMirrorView | null>(null)
   const savingRef = useRef(false)
   /** The theme compartment of the current view (reconfigured on scheme flip). */
   const themeCompRef = useRef<CmThemeCompartment | null>(null)
+
+  // Optional plugins can add CodeMirror behavior (for example persistent
+  // language navigation) without replacing this generic file viewer.
+  useEffect(() => {
+    const service = ctx.get('betterSidebar')
+    if (service === undefined) return
+    return service.subscribe(() => { setEditorExtensionRevision(revision => revision + 1) })
+  }, [ctx])
   /** The app's resolved color scheme; the editor re-themes in place on flips. */
   const [dark, setDark] = useState(() => isDarkScheme())
   /** The floating "add to conversation" popup (viewport-anchored; null = hidden). */
@@ -137,6 +146,9 @@ export function TextEditor(props: FileViewerProps) {
         cmSurfaceTheme,
         themeComp.of(dark),
         ...(language !== null ? [language] : []),
+        ...(viewerId === 'code'
+          ? ctx.get('betterSidebar')?.getEditorExtensions({ scope, path, content }) ?? []
+          : []),
         CodeMirrorView.updateListener.of((update) => {
           if (update.docChanged) {
             setDraft(update.state.doc.toString())
@@ -207,7 +219,17 @@ export function TextEditor(props: FileViewerProps) {
     // The keymap's save() reads live refs; scope/path are stable for a
     // tab's lifetime, and the dark flip is handled by the reconfigure
     // effect below (recreating the view here would drop the draft).
-  }, [content, path])
+  }, [content, path, editorExtensionRevision])
+
+  useEffect(() => {
+    if (navigation === undefined || navigation.path !== path) return
+    const view = viewRef.current
+    if (view === null || navigation.line >= view.state.doc.lines) return
+    const line = view.state.doc.line(navigation.line + 1)
+    const position = Math.min(line.to, line.from + navigation.character)
+    view.dispatch({ selection: { anchor: position }, effects: CodeMirrorView.scrollIntoView(position, { y: 'center' }) })
+    view.focus()
+  }, [navigation?.revision, path])
 
   // Scheme flip: re-theme in place (the compartment holds only the
   // scheme-dependent extensions; everything else is untouched).

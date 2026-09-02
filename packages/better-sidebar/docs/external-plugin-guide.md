@@ -129,6 +129,15 @@ export function apply(ctx: Context): void {
 
 ## 4. 新页面（Tab）注册 API
 
+### 4.0 代码编辑器扩展
+
+不需要替换内置 `code` viewer 的插件可注册 CodeMirror 扩展。扩展工厂只在代码文件创建编辑器时调用；返回值遵循 CodeMirror 的 `Extension` 约定，注册 disposer 会在插件卸载时移除它。`openLocation()` 是与语言无关的文件定位 API，适合语言导航、诊断和搜索插件调用。
+
+```ts
+ctx.effect(() => ctx.betterSidebar.registerEditorExtension('my-plugin:editor', ({ scope, path }) => extension))
+ctx.betterSidebar.openLocation(scope, { path, line: 0, character: 0 })
+```
+
 ### 4.1 `TabDescriptor` 完整字段
 
 ```ts

@@ -20,6 +20,7 @@
  *   then `exts`; `exts: []` is a catch-all that matches any path.
  */
 import type { ReactNode } from 'react'
+import type { Extension } from '@codemirror/state'
 import type { Context } from '../context-types.ts'
 import {
   activateTab as activateTabReducer, allLeaves, closeTab as closeTabReducer, closeFloatByTab, floatWithTab,
@@ -137,6 +138,16 @@ export interface SidebarSettingsDeclaration {
    */
   render?: (props: SidebarSettingsRenderProps) => ReactNode
 }
+
+/** Context supplied when a plugin contributes CodeMirror behavior to code files. */
+export interface SidebarEditorExtensionContext {
+  scope: SessionScope
+  path: string
+  content: string
+}
+
+/** A pure CodeMirror extension factory contributed by another client plugin. */
+export type SidebarEditorExtensionFactory = (context: SidebarEditorExtensionContext) => Extension | readonly Extension[]
 
 /** Props every tab component receives (builtins and external alike). */
 export interface TabComponentProps {
@@ -265,6 +276,8 @@ export interface FileViewerProps {
   mediaUrl?: string
   /** custom load() return value (fetchStrategy='custom'). */
   customData?: unknown
+  /** A requested zero-based UTF-16 cursor position for this file. */
+  navigation?: SourceLocation & { revision: number }
   /** Internal (built-in text editor): 'host' asks the viewer to skip its own
    *  toolbar row — the editor host's merged-mode header renders it instead,
    *  fed through the two callbacks below. Viewers that ignore these fields
@@ -346,6 +359,10 @@ export interface OpenTabSeed {
 export interface BetterSidebarService {
   registerTab(descriptor: TabDescriptor): () => void
   registerFileViewer(descriptor: FileViewerDescriptor): () => void
+  /** Register behavior for built-in code editors without replacing their viewer. */
+  registerEditorExtension(id: string, factory: SidebarEditorExtensionFactory): () => void
+  /** Resolve every live code-editor contribution in stable registration order. */
+  getEditorExtensions(context: SidebarEditorExtensionContext): readonly Extension[]
   getTabs(): readonly TabDescriptor[]
   getFileViewers(): readonly FileViewerDescriptor[]
   /** Find a tab descriptor by id (undefined if not registered). */
@@ -425,7 +442,12 @@ export interface BetterSidebarService {
   activateTab(tabId: string, scope?: SessionScope): void
   /** Open a file in the sidebar editor of `scope`'s session (title defaults to the file name). */
   openFile(scope: SessionScope, path: string, title?: string): void
+  /** Open a file and reveal a source position; useful to independent adapters. */
+  openLocation(scope: SessionScope, location: SourceLocation, title?: string): void
 }
+
+/** A file and zero-based UTF-16 cursor coordinate. */
+export interface SourceLocation { path: string; line: number; character: number }
 
 /** Extract the lowercase extension without leading dot from a path. */
 function extOfPath(path: string): string {
@@ -472,7 +494,7 @@ export function matchUrlTarget(tabs: readonly TabDescriptor[], url: URL): TabDes
  * The plugin version this service instance reports. Keep in lockstep with
  * `package.json`'s version — `tests/service.spec.ts` asserts the pair.
  */
-export const SIDEBAR_SERVICE_VERSION = '0.18.1-alpha.5'
+export const SIDEBAR_SERVICE_VERSION = '0.18.1-alpha.6'
 
 /**
  * Monotonic capability list consumers use to gate new API usage (features
@@ -503,6 +525,8 @@ export const SIDEBAR_FEATURES = [
   'urlTarget',
   'settingSelect',
   'floatWindows',
+  'editorExtensions',
+  'openLocation',
 ] as const
 
 /** Run one plugin callback; a throw is logged and never breaks the caller. */
@@ -522,7 +546,9 @@ function safeCall(fn: () => void): void {
 export function createBetterSidebarService(store: SidebarStore): BetterSidebarService {
   const tabs = new Map<string, TabDescriptor>()
   const viewers = new Map<string, FileViewerDescriptor>()
+  const editorExtensions = new Map<string, SidebarEditorExtensionFactory>()
   const listeners = new Set<() => void>()
+  let navigationRevision = 0
 
   const notify = (): void => {
     for (const fn of [...listeners]) fn()
@@ -559,6 +585,32 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
         notify()
       }
     }
+  }
+
+  const registerEditorExtension = (id: string, factory: SidebarEditorExtensionFactory): (() => void) => {
+    if (editorExtensions.has(id)) throw new Error(`[dsh-better-sidebar] editor extension "${id}" already registered`)
+    editorExtensions.set(id, factory)
+    notify()
+    return () => {
+      if (editorExtensions.get(id) === factory) {
+        editorExtensions.delete(id)
+        notify()
+      }
+    }
+  }
+
+  const getEditorExtensions = (context: SidebarEditorExtensionContext): readonly Extension[] => {
+    const extensions: Extension[] = []
+    for (const [id, factory] of editorExtensions) {
+      try {
+        const extension = factory(context)
+        if (Array.isArray(extension)) extensions.push(...extension)
+        else extensions.push(extension)
+      } catch (error) {
+        console.error(`[dsh-better-sidebar] editor extension "${id}" failed:`, error)
+      }
+    }
+    return extensions
   }
 
   const getTabs = (): readonly TabDescriptor[] => Array.from(tabs.values())
@@ -817,9 +869,24 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
     openTab({ type: 'editor', title: title ?? baseNameOf(path), path, id: `editor:${path}` }, scope)
   }
 
+  const openLocation = (scope: SessionScope, location: SourceLocation, title?: string): void => {
+    openFile(scope, location.path, title)
+    const reveal = (state: SidebarState): SidebarState => {
+      const tabs = allLeaves(state.splits).concat(allLeaves(state.bottomSplits)).flatMap(leaf => leaf.tabs).concat(state.floats.map(float => float.tab))
+      const tab = tabs.find(candidate => candidate.type === 'editor' && candidate.path === location.path)
+      if (tab === undefined) return state
+      const meta = tab.meta !== null && typeof tab.meta === 'object' && !Array.isArray(tab.meta) ? tab.meta as Record<string, unknown> : {}
+      return patchTab(state, tab.id, { meta: { ...meta, navigation: { ...location, revision: ++navigationRevision } } })
+    }
+    if (store.getSnapshot().sessionId === scope.sessionId) store.reduce(reveal)
+    else store.reduceFor(scope.sessionId, reveal)
+  }
+
   return {
     registerTab,
     registerFileViewer,
+    registerEditorExtension,
+    getEditorExtensions,
     getTabs,
     getFileViewers,
     getTab,
@@ -836,6 +903,7 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
     updateTab,
     activateTab,
     openFile,
+    openLocation,
   }
 }
 

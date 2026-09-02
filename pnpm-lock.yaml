@@ -221,6 +221,12 @@ importers:
 
   packages/code-navigator:
     dependencies:
+      '@codemirror/state':
+        specifier: ^6.7.1
+        version: 6.7.2
+      '@codemirror/view':
+        specifier: ^6.43.8
+        version: 6.43.10
       '@deepseek-ai/dsh-lsp-stdio':
         specifier: 0.1.2-alpha.3
         version: 0.1.2-alpha.3(3e0194d5159cccc7ace7d50e012edf13)
