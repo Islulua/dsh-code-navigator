@@ -405,7 +405,7 @@ export interface BetterSidebarService {
   /**
    * Monotonic capability list (v0.12.0+): 'badge' | 'tabLifecycle' |
    * 'updateTab' | 'openFile' | 'targetedOpen' | 'stateSubscription' |
-   * 'tabMeta' | 'pluginSettings' | 'openLocation'. Features are never removed — consumers
+   * 'tabMeta' | 'pluginSettings' | 'openLocation' | 'navigationHistory'. Features are never removed — consumers
    * gate new API usage on membership.
    */
   readonly features: readonly string[]
@@ -428,7 +428,15 @@ export interface BetterSidebarService {
   /** Open a file in the sidebar editor of `scope`'s session (title defaults to the file name). */
   openFile(scope: SessionScope, path: string, title?: string): void
   /** Open a source location and reveal its zero-based UTF-16 cursor position. */
-  openLocation(scope: SessionScope, location: SourceLocation, title?: string): void
+  openLocation(scope: SessionScope, location: SourceLocation, title?: string, origin?: SourceLocation): void
+  /** Whether the session's semantic-navigation timeline has an older location. */
+  canNavigateBack(scope: SessionScope): boolean
+  /** Whether the session's semantic-navigation timeline has a newer location. */
+  canNavigateForward(scope: SessionScope): boolean
+  /** Reveal the previous semantic-navigation location. */
+  navigateBack(scope: SessionScope): void
+  /** Reveal the next semantic-navigation location. */
+  navigateForward(scope: SessionScope): void
 }
 
 /** A file and zero-based UTF-16 cursor coordinate. */
@@ -483,7 +491,7 @@ export function matchUrlTarget(tabs: readonly TabDescriptor[], url: URL): TabDes
  * The plugin version this service instance reports. Keep in lockstep with
  * `package.json`'s version — `tests/service.spec.ts` asserts the pair.
  */
-export const SIDEBAR_SERVICE_VERSION = '0.18.1-alpha.0'
+export const SIDEBAR_SERVICE_VERSION = '0.18.1-alpha.1'
 
 /**
  * Monotonic capability list consumers use to gate new API usage (features
@@ -502,6 +510,7 @@ export const SIDEBAR_SERVICE_VERSION = '0.18.1-alpha.0'
  *   id focus targets RAISE the floating window (never duplicate the tab or
  *   expand panels), closeTab on a floating tab closes it with its window.
  * - 'openLocation': open a file and reveal a zero-based UTF-16 coordinate.
+ * - 'navigationHistory': VS Code-style back/forward timeline for semantic jumps.
  */
 export const SIDEBAR_FEATURES = [
   'badge',
@@ -516,6 +525,7 @@ export const SIDEBAR_FEATURES = [
   'settingSelect',
   'floatWindows',
   'openLocation',
+  'navigationHistory',
 ] as const
 
 /** Run one plugin callback; a throw is logged and never breaks the caller. */
@@ -537,6 +547,8 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
   const viewers = new Map<string, FileViewerDescriptor>()
   const listeners = new Set<() => void>()
   let navigationRevision = 0
+  /** Per-session definition-jump timeline. A jump after Back truncates Forward. */
+  const navigationHistories = new Map<string, { entries: SourceLocation[]; index: number }>()
 
   const notify = (): void => {
     for (const fn of [...listeners]) fn()
@@ -831,7 +843,8 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
     openTab({ type: 'editor', title: title ?? baseNameOf(path), path, id: `editor:${path}` }, scope)
   }
 
-  const openLocation = (scope: SessionScope, location: SourceLocation, title?: string): void => {
+  /** Open/reveal without mutating semantic history (used by Back/Forward). */
+  const revealLocation = (scope: SessionScope, location: SourceLocation, title?: string): void => {
     openFile(scope, location.path, title)
     const patchLocation = (state: SidebarState): SidebarState => {
       const tabs = allLeaves(state.splits).concat(allLeaves(state.bottomSplits)).flatMap(leaf => leaf.tabs)
@@ -848,6 +861,48 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
     if (store.getSnapshot().sessionId === scope.sessionId) store.reduce(patchLocation)
     else store.reduceFor(scope.sessionId, patchLocation)
   }
+
+  const sameLocation = (left: SourceLocation, right: SourceLocation): boolean =>
+    left.path === right.path && left.line === right.line && left.character === right.character
+
+  /** Record one definition jump using browser-style branch semantics. */
+  const recordNavigation = (sessionId: string, origin: SourceLocation | undefined, target: SourceLocation): void => {
+    const history = navigationHistories.get(sessionId) ?? { entries: [], index: -1 }
+    const entries = history.entries.slice(0, history.index + 1)
+    if (origin !== undefined && (entries.length === 0 || !sameLocation(entries[entries.length - 1]!, origin))) {
+      entries.push(origin)
+    }
+    if (entries.length === 0 || !sameLocation(entries[entries.length - 1]!, target)) entries.push(target)
+    // Keep a bounded timeline while preserving the current location.
+    if (entries.length > 100) entries.splice(0, entries.length - 100)
+    navigationHistories.set(sessionId, { entries, index: entries.length - 1 })
+  }
+
+  const openLocation = (scope: SessionScope, location: SourceLocation, title?: string, origin?: SourceLocation): void => {
+    recordNavigation(scope.sessionId, origin, location)
+    revealLocation(scope, location, title)
+  }
+
+  const canNavigateBack = (scope: SessionScope): boolean =>
+    (navigationHistories.get(scope.sessionId)?.index ?? -1) > 0
+
+  const canNavigateForward = (scope: SessionScope): boolean => {
+    const history = navigationHistories.get(scope.sessionId)
+    return history !== undefined && history.index >= 0 && history.index < history.entries.length - 1
+  }
+
+  const moveNavigation = (scope: SessionScope, delta: -1 | 1): void => {
+    const history = navigationHistories.get(scope.sessionId)
+    if (history === undefined) return
+    const index = history.index + delta
+    const location = history.entries[index]
+    if (location === undefined) return
+    history.index = index
+    revealLocation(scope, location)
+  }
+
+  const navigateBack = (scope: SessionScope): void => { moveNavigation(scope, -1) }
+  const navigateForward = (scope: SessionScope): void => { moveNavigation(scope, 1) }
 
   return {
     registerTab,
@@ -869,6 +924,10 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
     activateTab,
     openFile,
     openLocation,
+    canNavigateBack,
+    canNavigateForward,
+    navigateBack,
+    navigateForward,
   }
 }
 

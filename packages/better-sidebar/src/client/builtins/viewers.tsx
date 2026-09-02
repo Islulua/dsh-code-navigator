@@ -107,6 +107,12 @@ export function builtinViewers(): readonly FileViewerDescriptor[] {
       exts: [],
       priority: -100,
       fetchStrategy: 'fsRead',
+      settings: {
+        toggles: [{
+          key: 'preloadCompileCommands',
+          title: () => `${t('viewerCode')} · compile_commands.json`,
+        }],
+      },
       component: (props) => <LazyTextEditor {...props} />,
     },
     {

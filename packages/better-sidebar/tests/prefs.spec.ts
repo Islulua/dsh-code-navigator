@@ -44,6 +44,7 @@ describe('side card preferences', () => {
         interceptOpenPath: true,
         editorExplorer: false, changesDiffFloat: true,
         workspaceFence: true,
+        preloadCompileCommands: true,
         terminalShell: '',
         terminalShellArgs: '',
         titleBarScheme: 'auto',
@@ -78,6 +79,7 @@ describe('side card preferences', () => {
         interceptOpenPath: true,
         editorExplorer: false, changesDiffFloat: true,
         workspaceFence: true,
+        preloadCompileCommands: true,
         terminalShell: '',
         terminalShellArgs: '',
         titleBarScheme: 'auto',
@@ -112,6 +114,7 @@ describe('side card preferences', () => {
         interceptOpenPath: true,
         editorExplorer: false, changesDiffFloat: true,
         workspaceFence: true,
+        preloadCompileCommands: true,
         terminalShell: '',
         terminalShellArgs: '',
         titleBarScheme: 'auto',
@@ -180,6 +183,11 @@ describe('side card preferences', () => {
     expect((await loadPrefs(wire({ workspaceFence: 0 }))).workspaceFence).toBe(true)
     // An explicit false survives (the one-click off in the fence error notice).
     expect((await loadPrefs(wire({ workspaceFence: false }))).workspaceFence).toBe(false)
+  })
+
+  it('defaults compilation-database warm-up on and accepts an explicit opt-out', async () => {
+    expect((await loadPrefs(wire({}))).preloadCompileCommands).toBe(true)
+    expect((await loadPrefs(wire({ preloadCompileCommands: false }))).preloadCompileCommands).toBe(false)
   })
 
   it('defaults the title-bar scheme to the conservative auto with no preset or custom CSS', async () => {
@@ -282,9 +290,9 @@ describe('side card preferences', () => {
     const store = createSidebarStore()
     // Node environment: no window → the width falls back to PANEL_DEFAULT,
     // while the open flag still follows the preference.
-    store.setPrefs({ openByDefault: false, defaultWidthPercent: 45, autoOpenSubagent: true, autoOpenJobs: true, agentTerminalTools: false, agentOpenTools: false, bottomPanelAutoTerminal: true, terminalFontFamily: '', terminalFontSize: 13, interceptOpenPath: true, editorExplorer: true, changesDiffFloat: true, workspaceFence: true, terminalShell: '', terminalShellArgs: '', titleBarScheme: 'auto', titleBarPresetId: '', customCss: '', titleBarCompat: false, titleBarStripPx: 40, htmlViewerNoSandbox: false, htmlViewerDefaultUnsafe: false, browserNoSandbox: false, browserInterceptLinks: true, browserInterceptHttp: true, browserInterceptHttps: false, browserAllowedLoopback: "", tabsEnabled: {}, viewersEnabled: {}, pluginSettings: {} })
+    store.setPrefs({ openByDefault: false, defaultWidthPercent: 45, autoOpenSubagent: true, autoOpenJobs: true, agentTerminalTools: false, agentOpenTools: false, bottomPanelAutoTerminal: true, terminalFontFamily: '', terminalFontSize: 13, interceptOpenPath: true, editorExplorer: true, changesDiffFloat: true, workspaceFence: true, preloadCompileCommands: true, terminalShell: '', terminalShellArgs: '', titleBarScheme: 'auto', titleBarPresetId: '', customCss: '', titleBarCompat: false, titleBarStripPx: 40, htmlViewerNoSandbox: false, htmlViewerDefaultUnsafe: false, browserNoSandbox: false, browserInterceptLinks: true, browserInterceptHttp: true, browserInterceptHttps: false, browserAllowedLoopback: "", tabsEnabled: {}, viewersEnabled: {}, pluginSettings: {} })
     store.setSession('fresh-session')
-    expect(store.getPrefs()).toEqual({ openByDefault: false, defaultWidthPercent: 45, autoOpenSubagent: true, autoOpenJobs: true, agentTerminalTools: false, agentOpenTools: false, bottomPanelAutoTerminal: true, terminalFontFamily: '', terminalFontSize: 13, interceptOpenPath: true, editorExplorer: true, changesDiffFloat: true, workspaceFence: true, terminalShell: '', terminalShellArgs: '', titleBarScheme: 'auto', titleBarPresetId: '', customCss: '', titleBarCompat: false, titleBarStripPx: 40, htmlViewerNoSandbox: false, htmlViewerDefaultUnsafe: false, browserNoSandbox: false, browserInterceptLinks: true, browserInterceptHttp: true, browserInterceptHttps: false, browserAllowedLoopback: "", tabsEnabled: {}, viewersEnabled: {}, pluginSettings: {} })
+    expect(store.getPrefs()).toEqual({ openByDefault: false, defaultWidthPercent: 45, autoOpenSubagent: true, autoOpenJobs: true, agentTerminalTools: false, agentOpenTools: false, bottomPanelAutoTerminal: true, terminalFontFamily: '', terminalFontSize: 13, interceptOpenPath: true, editorExplorer: true, changesDiffFloat: true, workspaceFence: true, preloadCompileCommands: true, terminalShell: '', terminalShellArgs: '', titleBarScheme: 'auto', titleBarPresetId: '', customCss: '', titleBarCompat: false, titleBarStripPx: 40, htmlViewerNoSandbox: false, htmlViewerDefaultUnsafe: false, browserNoSandbox: false, browserInterceptLinks: true, browserInterceptHttp: true, browserInterceptHttps: false, browserAllowedLoopback: "", tabsEnabled: {}, viewersEnabled: {}, pluginSettings: {} })
     const snapshot = store.getSnapshot()
     expect(snapshot.sessionId).toBe('fresh-session')
     expect(snapshot.state?.panelOpen).toBe(false)
@@ -320,7 +328,7 @@ describe('side card preferences', () => {
 
   it('skips the default seed tab when the editor (files window) type is disabled', () => {
     const store = createSidebarStore()
-    store.setPrefs({ openByDefault: true, defaultWidthPercent: 30, autoOpenSubagent: true, autoOpenJobs: true, agentTerminalTools: false, agentOpenTools: false, bottomPanelAutoTerminal: true, terminalFontFamily: '', terminalFontSize: 13, interceptOpenPath: true, editorExplorer: true, changesDiffFloat: true, workspaceFence: true, terminalShell: '', terminalShellArgs: '', titleBarScheme: 'auto', titleBarPresetId: '', customCss: '', titleBarCompat: false, titleBarStripPx: 40, htmlViewerNoSandbox: false, htmlViewerDefaultUnsafe: false, browserNoSandbox: false, browserInterceptLinks: true, browserInterceptHttp: true, browserInterceptHttps: false, browserAllowedLoopback: "", tabsEnabled: { editor: false }, viewersEnabled: {}, pluginSettings: {} })
+      store.setPrefs({ openByDefault: true, defaultWidthPercent: 30, autoOpenSubagent: true, autoOpenJobs: true, agentTerminalTools: false, agentOpenTools: false, bottomPanelAutoTerminal: true, terminalFontFamily: '', terminalFontSize: 13, interceptOpenPath: true, editorExplorer: true, changesDiffFloat: true, workspaceFence: true, preloadCompileCommands: true, terminalShell: '', terminalShellArgs: '', titleBarScheme: 'auto', titleBarPresetId: '', customCss: '', titleBarCompat: false, titleBarStripPx: 40, htmlViewerNoSandbox: false, htmlViewerDefaultUnsafe: false, browserNoSandbox: false, browserInterceptLinks: true, browserInterceptHttp: true, browserInterceptHttps: false, browserAllowedLoopback: "", tabsEnabled: { editor: false }, viewersEnabled: {}, pluginSettings: {} })
     store.setSession('no-editor')
     const state = store.getSnapshot().state!
     const tabs = allLeaves(state.splits).flatMap(leaf => leaf.tabs)
@@ -330,7 +338,7 @@ describe('side card preferences', () => {
     // editorExplorer modes.
     for (const editorExplorer of [true, false]) {
       const openStore = createSidebarStore()
-      openStore.setPrefs({ openByDefault: true, defaultWidthPercent: 30, autoOpenSubagent: true, autoOpenJobs: true, agentTerminalTools: false, agentOpenTools: false, bottomPanelAutoTerminal: true, terminalFontFamily: '', terminalFontSize: 13, interceptOpenPath: true, editorExplorer, changesDiffFloat: true, workspaceFence: true, terminalShell: '', terminalShellArgs: '', titleBarScheme: 'auto', titleBarPresetId: '', customCss: '', titleBarCompat: false, titleBarStripPx: 40, htmlViewerNoSandbox: false, htmlViewerDefaultUnsafe: false, browserNoSandbox: false, browserInterceptLinks: true, browserInterceptHttp: true, browserInterceptHttps: false, browserAllowedLoopback: "", tabsEnabled: {}, viewersEnabled: {}, pluginSettings: {} })
+      openStore.setPrefs({ openByDefault: true, defaultWidthPercent: 30, autoOpenSubagent: true, autoOpenJobs: true, agentTerminalTools: false, agentOpenTools: false, bottomPanelAutoTerminal: true, terminalFontFamily: '', terminalFontSize: 13, interceptOpenPath: true, editorExplorer, changesDiffFloat: true, workspaceFence: true, preloadCompileCommands: true, terminalShell: '', terminalShellArgs: '', titleBarScheme: 'auto', titleBarPresetId: '', customCss: '', titleBarCompat: false, titleBarStripPx: 40, htmlViewerNoSandbox: false, htmlViewerDefaultUnsafe: false, browserNoSandbox: false, browserInterceptLinks: true, browserInterceptHttp: true, browserInterceptHttps: false, browserAllowedLoopback: "", tabsEnabled: {}, viewersEnabled: {}, pluginSettings: {} })
       openStore.setSession(`with-editor-${editorExplorer}`)
       const openTabs = allLeaves(openStore.getSnapshot().state!.splits).flatMap(leaf => leaf.tabs)
       expect(openTabs.map(tab => tab.type)).toEqual(['editor'])
@@ -340,7 +348,7 @@ describe('side card preferences', () => {
   it('seeds the empty editor home tab (files window) in both editorExplorer modes', () => {
     for (const editorExplorer of [true, false]) {
       const store = createSidebarStore()
-      store.setPrefs({ openByDefault: true, defaultWidthPercent: 30, autoOpenSubagent: true, autoOpenJobs: true, agentTerminalTools: false, agentOpenTools: false, bottomPanelAutoTerminal: true, terminalFontFamily: '', terminalFontSize: 13, interceptOpenPath: true, editorExplorer, changesDiffFloat: true, workspaceFence: true, terminalShell: '', terminalShellArgs: '', titleBarScheme: 'auto', titleBarPresetId: '', customCss: '', titleBarCompat: false, titleBarStripPx: 40, htmlViewerNoSandbox: false, htmlViewerDefaultUnsafe: false, browserNoSandbox: false, browserInterceptLinks: true, browserInterceptHttp: true, browserInterceptHttps: false, browserAllowedLoopback: "", tabsEnabled: {}, viewersEnabled: {}, pluginSettings: {} })
+      store.setPrefs({ openByDefault: true, defaultWidthPercent: 30, autoOpenSubagent: true, autoOpenJobs: true, agentTerminalTools: false, agentOpenTools: false, bottomPanelAutoTerminal: true, terminalFontFamily: '', terminalFontSize: 13, interceptOpenPath: true, editorExplorer, changesDiffFloat: true, workspaceFence: true, preloadCompileCommands: true, terminalShell: '', terminalShellArgs: '', titleBarScheme: 'auto', titleBarPresetId: '', customCss: '', titleBarCompat: false, titleBarStripPx: 40, htmlViewerNoSandbox: false, htmlViewerDefaultUnsafe: false, browserNoSandbox: false, browserInterceptLinks: true, browserInterceptHttp: true, browserInterceptHttps: false, browserAllowedLoopback: "", tabsEnabled: {}, viewersEnabled: {}, pluginSettings: {} })
       store.setSession(`fresh-${editorExplorer}`)
       const tabs = allLeaves(store.getSnapshot().state!.splits).flatMap(leaf => leaf.tabs)
       expect(tabs).toHaveLength(1)

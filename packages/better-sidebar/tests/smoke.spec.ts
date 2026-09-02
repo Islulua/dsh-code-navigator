@@ -1011,6 +1011,7 @@ describe('side card settings routes', () => {
         interceptOpenPath: true,
         editorExplorer: false,
         workspaceFence: true,
+        preloadCompileCommands: true,
         terminalShell: '',
         terminalShellArgs: '',
         titleBarCompat: false,

@@ -818,6 +818,56 @@ describe('openLocation', () => {
       navigation: { path: '/p/include/api.h', line: 9, character: 1, revision: 2 },
     })
   })
+
+  it('navigates a definition-jump timeline backward and forward', () => {
+    const store = createSidebarStore()
+    const service = createBetterSidebarService(store)
+    service.registerTab({ id: 'editor', title: () => 'Editor', dedupeKey: tab => tab.path, component: () => null })
+    const scope = { sessionId: 's1', cwd: '/p' }
+    store.setSession('s1')
+
+    service.openLocation(scope, { path: '/p/include/api.h', line: 7, character: 3 }, undefined,
+      { path: '/p/src/main.cc', line: 12, character: 8 })
+    expect(service.canNavigateBack(scope)).toBe(true)
+    expect(service.canNavigateForward(scope)).toBe(false)
+
+    service.navigateBack(scope)
+    expect(service.canNavigateBack(scope)).toBe(false)
+    expect(service.canNavigateForward(scope)).toBe(true)
+    const source = allLeaves(store.getSnapshot().state!.splits).flatMap(leaf => leaf.tabs)
+      .find(tab => tab.path === '/p/src/main.cc')
+    expect(source?.meta).toMatchObject({
+      navigation: { path: '/p/src/main.cc', line: 12, character: 8 },
+    })
+
+    service.navigateForward(scope)
+    const target = allLeaves(store.getSnapshot().state!.splits).flatMap(leaf => leaf.tabs)
+      .find(tab => tab.path === '/p/include/api.h')
+    expect(target?.meta).toMatchObject({
+      navigation: { path: '/p/include/api.h', line: 7, character: 3 },
+    })
+  })
+
+  it('drops the forward branch after a new jump from history', () => {
+    const store = createSidebarStore()
+    const service = createBetterSidebarService(store)
+    service.registerTab({ id: 'editor', title: () => 'Editor', dedupeKey: tab => tab.path, component: () => null })
+    const scope = { sessionId: 's1', cwd: '/p' }
+    store.setSession('s1')
+
+    const a = { path: '/p/a.cc', line: 1, character: 1 }
+    const b = { path: '/p/b.h', line: 2, character: 2 }
+    const c = { path: '/p/c.h', line: 3, character: 3 }
+    service.openLocation(scope, b, undefined, a)
+    service.navigateBack(scope)
+    service.openLocation(scope, c, undefined, a)
+
+    expect(service.canNavigateForward(scope)).toBe(false)
+    service.navigateBack(scope)
+    const current = allLeaves(store.getSnapshot().state!.splits).flatMap(leaf => leaf.tabs)
+      .find(tab => tab.path === a.path)
+    expect(current?.meta).toMatchObject({ navigation: a })
+  })
 })
 
 describe('tab lifecycle callbacks (v0.12.0)', () => {

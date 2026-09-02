@@ -100,6 +100,12 @@ export interface SidebarPrefs {
    */
   workspaceFence: boolean
   /**
+   * Whether opening a code file immediately warms its language server. For
+   * clangd this triggers compile_commands.json discovery and preamble/index
+   * work before the first explicit definition jump.
+   */
+  preloadCompileCommands: boolean
+  /**
    * The shell the UI and agent terminals spawn (absolute path or bare
    * executable name). Empty (default) keeps the legacy resolution order:
    * `cordis.patch.yml` `config.shell`, then `$SHELL` / login shell /
@@ -277,6 +283,7 @@ export const SIDEBAR_PREFS_DEFAULTS: SidebarPrefs = {
   editorExplorer: false,
   changesDiffFloat: true,
   workspaceFence: true,
+  preloadCompileCommands: true,
   terminalShell: '',
   terminalShellArgs: '',
   titleBarScheme: 'auto',

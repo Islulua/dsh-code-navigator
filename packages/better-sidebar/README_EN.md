@@ -9,7 +9,7 @@
   <a href="https://github.com/omdsh-dev/DSH-better-sidebar/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/omdsh-dev/DSH-better-sidebar" /></a>
   <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg" /></a>
   <a href="https://dshfind.com/en/plugins/omdsh-dev/DSH-better-sidebar?ref=badge"><img alt="dshfind" src="https://dshfind.com/api/badge/omdsh-dev/DSH-better-sidebar?lang=en" /></a><br /><br />
-  <a href="https://www.npmjs.com/package/@deepseek-ai/dsh?activeTab=versions"><img alt="Supported DSH versions (v0.18.1-alpha.0 alpha track): 0.1.2-alpha.3" src="https://img.shields.io/badge/DSH-0.1.2--alpha.3_(alpha%20track)-4d6bfe" /></a>
+  <a href="https://www.npmjs.com/package/@deepseek-ai/dsh?activeTab=versions"><img alt="Supported DSH versions (v0.18.1-alpha.1 alpha track): 0.1.2-alpha.3" src="https://img.shields.io/badge/DSH-0.1.2--alpha.3_(alpha%20track)-4d6bfe" /></a>
   <a href="https://github.com/topics/dsh-better-sidebar"><img alt="Plugin ecosystem: GitHub topic dsh-better-sidebar" src="https://img.shields.io/badge/plugin%20ecosystem-topic%20dsh--better--sidebar-4d6bfe" /></a><br /><br />
   <img alt="File management" src="https://img.shields.io/badge/-File%20management-4d6bfe" /> <img alt="Edit &amp; preview" src="https://img.shields.io/badge/-Edit%20%26%20preview-4d6bfe" /> <img alt="Embedded browser" src="https://img.shields.io/badge/-Embedded%20browser-4d6bfe" /> <img alt="Real terminal" src="https://img.shields.io/badge/-Real%20terminal-4d6bfe" /> <img alt="Changes" src="https://img.shields.io/badge/-Changes-4d6bfe" /> <img alt="Background tasks" src="https://img.shields.io/badge/-Background%20tasks-4d6bfe" /> <img alt="Side Chat" src="https://img.shields.io/badge/-Side%20Chat-4d6bfe" /> <img alt="Plugin integration" src="https://img.shields.io/badge/-Plugin%20integration-4d6bfe" /><br /><br />
   <b>A dual workbench (right sidebar + bottom panel)</b> that opens its <code>ctx.betterSidebar</code> service to every plugin —<br />
@@ -62,7 +62,7 @@
 **Prerequisites**: DSH installed (`dsh web` boots), Node.js ≥ 20, pnpm ≥ 10.
 
 **Supported DSH versions**:
-<a href="https://www.npmjs.com/package/@deepseek-ai/dsh?activeTab=versions"><img alt="Supported DSH versions (v0.18.1-alpha.0 alpha track): 0.1.2-alpha.3" src="https://img.shields.io/badge/DSH-0.1.2--alpha.3_(alpha%20track)-4d6bfe" /></a>
+<a href="https://www.npmjs.com/package/@deepseek-ai/dsh?activeTab=versions"><img alt="Supported DSH versions (v0.18.1-alpha.1 alpha track): 0.1.2-alpha.3" src="https://img.shields.io/badge/DSH-0.1.2--alpha.3_(alpha%20track)-4d6bfe" /></a>
 
 > 🧪 **Alpha track**: starting with `v0.18.0-alpha.0` the plugin targets DSH **0.1.2-alpha.x** (npm dist-tag `alpha`) and drops 0.1.0-rc.8 ~ 0.1.1-rc.2 — stable-DSH users should stay on `@latest` (v0.17.1); DSH 0.1.2-alpha.3 users install `dsh-better-sidebar@alpha`.
 
@@ -263,7 +263,13 @@ The GitHub topic [`dsh-better-sidebar`](https://github.com/topics/dsh-better-sid
   <a href="https://github.com/user-attachments/assets/946f7028-4967-461e-a750-d1b5056b62d0"><img width="33%" alt="Service API base screenshot" src="https://github.com/user-attachments/assets/946f7028-4967-461e-a750-d1b5056b62d0" /></a>
 </div>
 
-**Supported DSH versions**: <a href="https://www.npmjs.com/package/@deepseek-ai/dsh?activeTab=versions"><img alt="Supported DSH versions (v0.18.1-alpha.0 alpha track): 0.1.2-alpha.3" src="https://img.shields.io/badge/DSH-0.1.2--alpha.3_(alpha%20track)-4d6bfe" /></a> · full release history on the [Releases](https://github.com/omdsh-dev/DSH-better-sidebar/releases) page
+**Supported DSH versions**: <a href="https://www.npmjs.com/package/@deepseek-ai/dsh?activeTab=versions"><img alt="Supported DSH versions (v0.18.1-alpha.1 alpha track): 0.1.2-alpha.3" src="https://img.shields.io/badge/DSH-0.1.2--alpha.3_(alpha%20track)-4d6bfe" /></a> · full release history on the [Releases](https://github.com/omdsh-dev/DSH-better-sidebar/releases) page
+
+### v0.18.1-alpha.1
+
+- 🧭 **VS Code-style code navigation**: Cmd/Ctrl-click records the source file and exact cursor position. Back/Forward buttons in the editor header traverse that timeline, and a new jump after Back clears the old Forward branch.
+- ⚡ **Default language-server warm-up**: opening a code file starts its language server in the background; clangd discovers `compile_commands.json` and builds its preamble/index early. Disable the `compile_commands.json` warm-up under Settings → Side card → File viewers → Code.
+- 🔎 **VS Code-like symbol feedback**: jumpable symbols receive a hover underline and cached definition lookup; newer hover/click requests cancel stale queued work.
 
 ### v0.18.1-alpha.0
 

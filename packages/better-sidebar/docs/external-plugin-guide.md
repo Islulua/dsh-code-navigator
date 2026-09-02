@@ -585,7 +585,7 @@ interface BetterSidebarService {
   /** 单调能力清单（只增不删）：'badge' | 'tabLifecycle' | 'updateTab' |
    *  'openFile' | 'targetedOpen' | 'stateSubscription' | 'tabMeta' |
    *  'pluginSettings' | 'urlTarget' | 'settingSelect' | 'floatWindows' |
-   *  'openLocation'
+   *  'openLocation' | 'navigationHistory'
    *  ——用 `features.includes('xxx')` 按能力 gate。 */
   readonly features: readonly string[]
   /** 当前快照：激活 sessionId + 其状态（面板几何/打开的 tabs/展开集）+ prefs。
@@ -608,7 +608,13 @@ interface BetterSidebarService {
     scope: SessionScope,
     location: { path: string; line: number; character: number },
     title?: string,
+    origin?: { path: string; line: number; character: number },
   ): void
+  /** 查询并移动 VS Code 风格的语义跳转时间线。 */
+  canNavigateBack(scope: SessionScope): boolean
+  canNavigateForward(scope: SessionScope): boolean
+  navigateBack(scope: SessionScope): void
+  navigateForward(scope: SessionScope): void
 }
 
 /** openTab 的 seed（v0.12.0 起导出命名类型）。 */

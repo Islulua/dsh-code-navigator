@@ -13,15 +13,15 @@
  * the FileViewerProps toolbar callbacks so the host's path-input header
  * renders the controls instead.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import clsx from 'clsx'
-import { EditorState } from '@codemirror/state'
-import { EditorView as CodeMirrorView, keymap, lineNumbers } from '@codemirror/view'
+import { EditorState, StateEffect, StateField, type RangeSet } from '@codemirror/state'
+import { Decoration, EditorView as CodeMirrorView, keymap, lineNumbers } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { IconCheckOutline16, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 import { markdownTextProps } from './markdown-labels.tsx'
-import { api, htmlUrl } from './api.ts'
+import { api, htmlUrl, type LspLocationsResult } from './api.ts'
 import { rewriteLocalImageUrls } from './markdown-images.ts'
 import { languageForPath } from './lang.ts'
 import { cmSurfaceTheme, CmThemeCompartment } from './cm-themes.ts'
@@ -57,8 +57,62 @@ interface SelectionPopup {
  */
 export const HTML_IFRAME_SANDBOX = 'allow-scripts allow-popups allow-downloads allow-modals'
 
+/**
+ * Code navigation affordance (VSCode-style "jumpable symbol" hint).
+ *
+ * The identifier range under the pointer is tracked on `mousemove`. Holding
+ * the jump modifier (Cmd/Ctrl) underlines it immediately; otherwise a
+ * debounced, cached `goToDefinition` pre-fetch decides — the word is
+ * underlined only when a definition actually exists, exactly like VSCode's
+ * hover highlight. The same cache backs the Cmd/Ctrl+click jump, so a symbol
+ * that was hovered already opens instantly. A warm-up query on file open
+ * starts the language server and builds the file's preamble in the
+ * background, removing the multi-second cold start on the first C++ jump.
+ */
+
+/** The identifier token under `pos`, or null when the pointer is not on one. */
+function wordRangeAt(state: EditorState, pos: number): { from: number; to: number } | null {
+  if (pos < 0 || pos > state.doc.length) return null
+  const line = state.doc.lineAt(pos)
+  const text = line.text
+  const rel = pos - line.from
+  if (rel < 0 || rel > text.length) return null
+  const isWord = (c: string): boolean => /[A-Za-z0-9_]/.test(c)
+  // Not on a word, and not right after one (e.g. trailing the last char).
+  if (rel < text.length && !isWord(text.charAt(rel)) && !(rel > 0 && isWord(text.charAt(rel - 1)))) return null
+  let from = rel
+  while (from > 0 && isWord(text.charAt(from - 1))) from -= 1
+  let to = rel
+  while (to < text.length && isWord(text.charAt(to))) to += 1
+  if (from === to) return null
+  return { from: line.from + from, to: line.from + to }
+}
+
+/** Underline decoration applied to the hovered/clickable identifier. */
+const NAV_UNDERLINE_MARK = Decoration.mark({ class: 'cm-nav-underline' })
+/** Effect carrying the range to underline (null clears it). */
+const navHoverEffect = StateEffect.define<{ from: number; to: number } | null>()
+/** State field that renders the current navigation underline. */
+const navHoverField = StateField.define<RangeSet<Decoration>>({
+  create: () => Decoration.none,
+  update(deco, tr) {
+    deco = deco.map(tr.changes)
+    for (const effect of tr.effects) {
+      if (effect.is(navHoverEffect)) {
+        return effect.value === null
+          ? Decoration.none
+          : Decoration.set([NAV_UNDERLINE_MARK.range(effect.value.from, effect.value.to)])
+      }
+    }
+    // The document changed: stale ranges are meaningless, drop the underline.
+    if (tr.docChanged) return Decoration.none
+    return deco
+  },
+  provide: (field) => CodeMirrorView.decorations.from(field),
+})
+
 export function TextEditor(props: FileViewerProps) {
-  const { ctx, scope, path, viewerId, content, truncated, navigation } = props
+  const { ctx, store, scope, path, viewerId, content, truncated, navigation } = props
   const [mode, setMode] = useState<ViewMode>('preview')
   /** The editor's current text (null while clean); preview renders this. */
   const [draft, setDraft] = useState<string | null>(null)
@@ -77,6 +131,24 @@ export function TextEditor(props: FileViewerProps) {
   const popupRef = useRef<SelectionPopup | null>(null)
   /** The markdown preview container (selection-containment + line lookup). */
   const mdRef = useRef<HTMLDivElement>(null)
+  /** LSP definition cache: `${path}|${line}|${char}` -> result (null = no def). */
+  const navCacheRef = useRef<Map<string, LspLocationsResult | null>>(new Map())
+  /** Pending hover pre-fetch timer (window timeout id). */
+  const navTimerRef = useRef<number | null>(null)
+  /** Latest interactive lookup; newer hover/click work cancels stale work. */
+  const navRequestRef = useRef<AbortController | null>(null)
+  /** The identifier range currently hovered/underlined (or being checked). */
+  const navHoverRangeRef = useRef<{ from: number; to: number } | null>(null)
+  const subscribePrefs = useCallback((listener: () => void) => store.subscribe(listener), [store])
+  const readPreloadCompileCommands = useCallback(
+    () => store.getSnapshot().prefs.preloadCompileCommands,
+    [store],
+  )
+  const preloadCompileCommands = useSyncExternalStore(
+    subscribePrefs,
+    readPreloadCompileCommands,
+    readPreloadCompileCommands,
+  )
 
   const hidePopup = (): void => {
     popupRef.current = null
@@ -126,6 +198,48 @@ export function TextEditor(props: FileViewerProps) {
     const language = languageForPath(path)
     const themeComp = new CmThemeCompartment()
     themeCompRef.current = themeComp
+    // Navigation-hint helpers (closure over scope/path/refs; the editor's
+    // event handlers call them on mouse events).
+    const clearNavHover = (view: CodeMirrorView): void => {
+      if (navTimerRef.current !== null) {
+        window.clearTimeout(navTimerRef.current)
+        navTimerRef.current = null
+      }
+      navHoverRangeRef.current = null
+      view.dispatch({ effects: navHoverEffect.of(null) })
+    }
+    const checkNavHover = (view: CodeMirrorView, range: { from: number; to: number }): void => {
+      const line = view.state.doc.lineAt(range.from)
+      const character = range.from - line.from
+      const key = `${path}|${line.number - 1}|${character}`
+      const cached = navCacheRef.current.get(key)
+      if (cached !== undefined) {
+        const hovered = navHoverRangeRef.current
+        if (cached !== null && cached.locations.length > 0
+          && hovered !== null && hovered.from === range.from && hovered.to === range.to) {
+          view.dispatch({ effects: navHoverEffect.of(range) })
+        }
+        return
+      }
+      if (navTimerRef.current !== null) window.clearTimeout(navTimerRef.current)
+      navTimerRef.current = window.setTimeout(() => {
+        navTimerRef.current = null
+        if (navHoverRangeRef.current === null || navHoverRangeRef.current.from !== range.from) return
+        navRequestRef.current?.abort()
+        const controller = new AbortController()
+        navRequestRef.current = controller
+        void api.lspDefinition(scope, path, { line: line.number - 1, character }, controller.signal)
+          .then((result) => {
+            navCacheRef.current.set(key, result)
+            const hovered = navHoverRangeRef.current
+            if (hovered === null || hovered.from !== range.from || hovered.to !== range.to) return
+            view.dispatch(result.locations.length > 0
+              ? { effects: navHoverEffect.of(range) }
+              : { effects: navHoverEffect.of(null) })
+          })
+          .catch(() => { navCacheRef.current.set(key, null) })
+      }, 220)
+    }
     const state = EditorState.create({
       doc: content,
       extensions: [
@@ -141,6 +255,11 @@ export function TextEditor(props: FileViewerProps) {
           if (update.docChanged) {
             setDraft(update.state.doc.toString())
             setDirty(true)
+            // Positions shifted: hover cache and any underline are stale.
+            navCacheRef.current.clear()
+            if (navHoverRangeRef.current !== null) {
+              navHoverRangeRef.current = null
+            }
           }
         }),
         keymap.of([
@@ -159,23 +278,44 @@ export function TextEditor(props: FileViewerProps) {
         ...(viewerId === 'code' || viewerId === 'markdown' ? [
           CodeMirrorView.domEventHandlers({
             click: (event, view) => {
-              if (event.button !== 0 || (!event.metaKey && !event.ctrlKey)) return false
+              // Jump modifier: Cmd/Ctrl, and never with Alt/Shift (the latter
+              // are the browser's own multi-select / new-tab chords).
+              if (event.button !== 0 || !(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return false
               const position = view.posAtCoords({ x: event.clientX, y: event.clientY })
               if (position === null) return false
               event.preventDefault()
-              const line = view.state.doc.lineAt(position)
-              const controller = new AbortController()
-              void api.lspDefinition(scope, path, {
-                line: line.number - 1,
-                character: position - line.from,
-              }, controller.signal).then((result) => {
-                const target = result.locations[0]
+              if (navTimerRef.current !== null) {
+                window.clearTimeout(navTimerRef.current)
+                navTimerRef.current = null
+              }
+              const range = wordRangeAt(view.state, position)
+              const line = view.state.doc.lineAt(range !== null ? range.from : position)
+              const character = range !== null ? range.from - line.from : position - line.from
+              const key = `${path}|${line.number - 1}|${character}`
+              const apply = (result: LspLocationsResult | null): void => {
+                const target = result?.locations[0]
                 if (target === undefined) return
                 ctx.get('betterSidebar')?.openLocation(scope, {
                   path: target.path,
                   line: target.range.start.line,
                   character: target.range.start.character,
-                })
+                }, undefined, { path, line: line.number - 1, character })
+              }
+              // A hover pre-fetch already resolved this symbol: jump instantly.
+              const cached = navCacheRef.current.get(key)
+              if (cached !== undefined) {
+                apply(cached)
+                return true
+              }
+              navRequestRef.current?.abort()
+              const controller = new AbortController()
+              navRequestRef.current = controller
+              void api.lspDefinition(scope, path, {
+                line: line.number - 1,
+                character,
+              }, controller.signal).then((result) => {
+                navCacheRef.current.set(key, result)
+                apply(result)
               }).catch((error: unknown) => {
                 if (!(error instanceof DOMException && error.name === 'AbortError')) {
                   console.error('[dsh-better-sidebar] definition lookup failed:', error)
@@ -184,6 +324,32 @@ export function TextEditor(props: FileViewerProps) {
               return true
             },
           }),
+          // Navigation hint (code viewer): hover the pointer over an
+          // identifier — while holding Cmd/Ctrl it underlines immediately,
+          // otherwise a debounced, cached definition check underlines it only
+          // when a definition exists (VSCode-style). Leaving the editor clears
+          // both the underline and any pending check.
+          ...(viewerId === 'code' ? [navHoverField, CodeMirrorView.domEventHandlers({
+            mousemove: (event, view) => {
+              const position = view.posAtCoords({ x: event.clientX, y: event.clientY })
+              const range = position === null ? null : wordRangeAt(view.state, position)
+              if (range === null) {
+                clearNavHover(view)
+                return false
+              }
+              const current = navHoverRangeRef.current
+              if (current !== null && current.from === range.from && current.to === range.to) return false
+              navHoverRangeRef.current = range
+              if (event.metaKey || event.ctrlKey) {
+                // Snappy affordance while the jump modifier is held; the check
+                // below still removes it when the symbol has no definition.
+                view.dispatch({ effects: navHoverEffect.of(range) })
+              }
+              checkNavHover(view, range)
+              return false
+            },
+            mouseleave: (_event, view) => { clearNavHover(view); return false },
+          })] : []),
           CodeMirrorView.updateListener.of((update) => {
             if (update.geometryChanged || update.viewportChanged) {
               hidePopup()
@@ -227,6 +393,8 @@ export function TextEditor(props: FileViewerProps) {
     const view = new CodeMirrorView({ state, parent: host })
     viewRef.current = view
     return () => {
+      navRequestRef.current?.abort()
+      navRequestRef.current = null
       view.destroy()
       viewRef.current = null
       themeCompRef.current = null
@@ -235,6 +403,29 @@ export function TextEditor(props: FileViewerProps) {
     // tab's lifetime, and the dark flip is handled by the reconfigure
     // effect below (recreating the view here would drop the draft).
   }, [content, path])
+
+  // Default-on warm-up: the first background definition request starts the
+  // pooled server, lets clangd discover compile_commands.json and builds the
+  // file preamble before the user asks to jump. Users can disable it in the
+  // Code viewer settings when background project I/O is undesirable.
+  useEffect(() => {
+    if (!preloadCompileCommands || viewerId !== 'code' || content === undefined) return
+    const view = viewRef.current
+    if (view === null) return
+    const match = /[A-Za-z_][A-Za-z0-9_]*/.exec(content)
+    const offset = match?.index ?? 0
+    const line = view.state.doc.lineAt(offset)
+    const character = offset - line.from
+    const key = `${path}|${line.number - 1}|${character}`
+    if (navCacheRef.current.has(key)) return
+    const controller = new AbortController()
+    void api.lspDefinition(scope, path, { line: line.number - 1, character }, controller.signal)
+      .then((result) => { navCacheRef.current.set(key, result) })
+      .catch((error: unknown) => {
+        if (!(error instanceof DOMException && error.name === 'AbortError')) navCacheRef.current.set(key, null)
+      })
+    return () => { controller.abort() }
+  }, [content, path, preloadCompileCommands, scope.sessionId, scope.cwd, viewerId])
 
   // A definition jump can target an already-open editor. Re-select and
   // center it whenever the service publishes a new navigation revision.

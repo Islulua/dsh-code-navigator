@@ -25,7 +25,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createElement } from 'react'
 import clsx from 'clsx'
-import { IconCheckOutline16, IconFolderOpen16, IconRefreshOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
+import {
+  IconCheckOutline16,
+  IconChevronLeftOutline14,
+  IconChevronRightOutline14,
+  IconFolderOpen16,
+  IconRefreshOutline14,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Context } from '../context-types.ts'
 import { api, isOutsideWorkspaceMessage, mediaUrl, type SessionScope } from './api.ts'
 import { BinaryDownload } from './binary-download.tsx'
@@ -406,6 +412,26 @@ export function EditorHost(props: {
   return (
     <div className={css.editor}>
       <div className={css.editorHeader}>
+        <button
+          type="button"
+          className={css.iconButton}
+          aria-label={t('browserBack')}
+          title={t('browserBack')}
+          disabled={ctx.get('betterSidebar')?.canNavigateBack(scope) !== true}
+          onClick={() => { ctx.get('betterSidebar')?.navigateBack(scope) }}
+        >
+          <IconChevronLeftOutline14 size={14} />
+        </button>
+        <button
+          type="button"
+          className={css.iconButton}
+          aria-label={t('browserForward')}
+          title={t('browserForward')}
+          disabled={ctx.get('betterSidebar')?.canNavigateForward(scope) !== true}
+          onClick={() => { ctx.get('betterSidebar')?.navigateForward(scope) }}
+        >
+          <IconChevronRightOutline14 size={14} />
+        </button>
         <EditorPathInput key={path} path={path} cwd={scope.cwd} onOpen={openFile} />
         {toolbar?.modes === true && (
           <div className={css.editorModeToggle}>
