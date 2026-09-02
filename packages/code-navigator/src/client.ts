@@ -49,6 +49,13 @@ async function standaloneCall<T>(method: string, cwd: string, path: string, extr
 
 interface FileEntry { name: string; type: 'file' | 'directory'; path: string; size?: number }
 interface TextFile { path: string; text: string }
+interface NavigationLocation { path: string; line: number; character: number }
+
+function parentDirectory(path: string): string {
+  const trimmed = path.replace(/[\\/]+$/, '')
+  const separator = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'))
+  return separator <= 0 ? path : trimmed.slice(0, separator)
+}
 
 /** Mount the lightweight navigator window used only when BetterSidebar is absent. */
 function mountStandaloneWorkbench(): () => void {
@@ -59,28 +66,59 @@ function mountStandaloneWorkbench(): () => void {
   const panel = document.createElement('div')
   panel.dataset.dshCodeNavigatorWorkbench = ''
   panel.style.cssText = 'position:fixed;right:0;top:0;bottom:0;width:min(760px,70vw);z-index:49;display:none;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#24292f);border-left:1px solid var(--dsw-alias-border-l2,#d0d7de);font:13px system-ui,sans-serif'
-  panel.innerHTML = '<div style="height:40px;display:flex;gap:6px;align-items:center;padding:0 10px;border-bottom:1px solid var(--dsw-alias-border-l2,#d0d7de)"><strong style="white-space:nowrap">Code Navigator</strong><input data-cwd placeholder="Workspace path" style="flex:1;min-width:0"><button data-load>Open</button><button data-close>×</button></div><div style="display:flex;height:calc(100% - 40px)"><aside data-tree style="width:220px;overflow:auto;border-right:1px solid var(--dsw-alias-border-l2,#d0d7de);padding:6px"></aside><main style="flex:1;min-width:0;display:flex;flex-direction:column"><div data-status style="padding:5px 8px;border-bottom:1px solid var(--dsw-alias-border-l2,#d0d7de);color:var(--dsw-alias-label-secondary,#57606a)">Choose a workspace</div><textarea data-editor spellcheck="false" style="flex:1;border:0;resize:none;padding:10px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.5;outline:none"></textarea></main></div>'
+  panel.innerHTML = '<div style="height:40px;display:flex;gap:6px;align-items:center;padding:0 10px;border-bottom:1px solid var(--dsw-alias-border-l2,#d0d7de)"><strong style="white-space:nowrap">Code Navigator</strong><input data-cwd placeholder="Workspace path" style="flex:1;min-width:0"><button data-load>Open</button><button data-back title="Go Back" disabled>←</button><button data-forward title="Go Forward" disabled>→</button><button data-close title="Close">×</button></div><div style="display:flex;height:calc(100% - 40px)"><aside style="width:220px;display:flex;flex-direction:column;border-right:1px solid var(--dsw-alias-border-l2,#d0d7de)"><div style="display:flex;gap:4px;padding:6px;border-bottom:1px solid var(--dsw-alias-border-l2,#d0d7de)"><button data-up title="Parent directory">↑</button><span data-tree-path style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span></div><div data-tree style="overflow:auto;padding:6px"></div></aside><main style="flex:1;min-width:0;display:flex;flex-direction:column"><div data-status style="padding:5px 8px;border-bottom:1px solid var(--dsw-alias-border-l2,#d0d7de);color:var(--dsw-alias-label-secondary,#57606a)">Choose a workspace</div><textarea data-editor spellcheck="false" style="flex:1;border:0;resize:none;padding:10px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.5;outline:none"></textarea></main></div>'
   document.body.append(launcher, panel)
   const cwdInput = panel.querySelector<HTMLInputElement>('[data-cwd]')!
   const tree = panel.querySelector<HTMLElement>('[data-tree]')!
+  const treePathLabel = panel.querySelector<HTMLElement>('[data-tree-path]')!
   const status = panel.querySelector<HTMLElement>('[data-status]')!
   const editor = panel.querySelector<HTMLTextAreaElement>('[data-editor]')!
+  const back = panel.querySelector<HTMLButtonElement>('[data-back]')!
+  const forward = panel.querySelector<HTMLButtonElement>('[data-forward]')!
   let cwd = localStorage.getItem('dsh-code-navigator:cwd') ?? ''
   let currentPath = ''
+  let treePath = ''
+  let changeTimer: number | undefined
+  let opened = false
+  const history: NavigationLocation[] = []
+  let historyIndex = -1
   cwdInput.value = cwd
   const show = (): void => { panel.style.display = 'block'; launcher.style.display = 'none' }
   const hide = (): void => { panel.style.display = 'none'; launcher.style.display = 'block' }
-  const openFile = async (path: string): Promise<void> => {
+  const updateHistoryActions = (): void => {
+    back.disabled = historyIndex <= 0
+    forward.disabled = historyIndex < 0 || historyIndex >= history.length - 1
+  }
+  const closeCurrent = async (): Promise<void> => {
+    if (changeTimer !== undefined) { window.clearTimeout(changeTimer); changeTimer = undefined }
+    if (!opened || currentPath === '') return
+    await standaloneCall('close', cwd, currentPath)
+    opened = false
+  }
+  const cursorAt = (line: number, character: number): void => {
+    const lines = editor.value.split('\n')
+    const offset = lines.slice(0, line).join('\n').length + (line === 0 ? 0 : 1) + Math.min(character, lines[line]?.length ?? 0)
+    editor.selectionStart = editor.selectionEnd = offset
+    editor.focus()
+  }
+  const openFile = async (path: string, location?: Pick<NavigationLocation, 'line' | 'character'>): Promise<void> => {
+    await closeCurrent()
     const file = await standaloneCall<TextFile>('read', cwd, path)
     currentPath = file.path
     editor.value = file.text
     const project = await standaloneCall<{ server: string | null; configPath: string | null }>('project', cwd, currentPath)
     status.textContent = `${currentPath} · ${project.server ?? 'plain text'}${project.configPath === null ? '' : ` · ${project.configPath.split('/').pop()}`}`
-    if (project.server !== null) await standaloneCall('open', cwd, currentPath)
+    if (project.server !== null) {
+      await standaloneCall('open', cwd, currentPath)
+      opened = true
+    }
+    if (location !== undefined) cursorAt(location.line, location.character)
   }
-  const renderDirectory = async (path: string, target: HTMLElement = tree): Promise<void> => {
+  const renderDirectory = async (path: string): Promise<void> => {
     const entries = await standaloneCall<readonly FileEntry[]>('list', cwd, path)
-    target.replaceChildren(...entries.map(entry => {
+    treePath = path
+    treePathLabel.textContent = path === cwd ? '.' : path.slice(cwd.length).replace(/^[\\/]/, '')
+    tree.replaceChildren(...entries.map(entry => {
       const button = document.createElement('button')
       button.textContent = `${entry.type === 'directory' ? '▸' : '□'} ${entry.name}`
       button.style.cssText = 'display:block;width:100%;border:0;background:transparent;color:inherit;text-align:left;padding:3px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'
@@ -91,15 +129,48 @@ function mountStandaloneWorkbench(): () => void {
       return button
     }))
   }
+  const moveHistory = (delta: -1 | 1): void => {
+    const target = history[historyIndex + delta]
+    if (target === undefined) return
+    historyIndex += delta
+    updateHistoryActions()
+    status.textContent = 'Opening location…'
+    void openFile(target.path, target).catch(error => { status.textContent = String(error) })
+  }
+  const recordNavigation = (origin: NavigationLocation, target: NavigationLocation): void => {
+    const entries = history.slice(0, historyIndex + 1)
+    const previous = entries[entries.length - 1]
+    if (previous === undefined || previous.path !== origin.path || previous.line !== origin.line || previous.character !== origin.character) entries.push(origin)
+    const last = entries[entries.length - 1]
+    if (last === undefined || last.path !== target.path || last.line !== target.line || last.character !== target.character) entries.push(target)
+    history.splice(0, history.length, ...entries)
+    historyIndex = entries.length - 1
+    if (history.length > 100) { history.shift(); historyIndex-- }
+    updateHistoryActions()
+  }
   const load = (): void => {
-    cwd = cwdInput.value.trim()
-    if (cwd === '') return
-    localStorage.setItem('dsh-code-navigator:cwd', cwd)
+    const nextCwd = cwdInput.value.trim()
+    if (nextCwd === '') return
     status.textContent = 'Loading workspace…'
-    void renderDirectory(cwd).then(() => { status.textContent = cwd }).catch(error => { status.textContent = String(error) })
+    void closeCurrent().then(async () => {
+      cwd = nextCwd
+      currentPath = ''
+      editor.value = ''
+      history.splice(0)
+      historyIndex = -1
+      updateHistoryActions()
+      localStorage.setItem('dsh-code-navigator:cwd', cwd)
+      await renderDirectory(cwd)
+      status.textContent = cwd
+    }).catch(error => { status.textContent = String(error) })
   }
   panel.querySelector<HTMLButtonElement>('[data-load]')!.onclick = load
   panel.querySelector<HTMLButtonElement>('[data-close]')!.onclick = hide
+  panel.querySelector<HTMLButtonElement>('[data-up]')!.onclick = () => {
+    if (treePath !== '' && treePath !== cwd) void renderDirectory(parentDirectory(treePath)).catch(error => { status.textContent = String(error) })
+  }
+  back.onclick = () => { moveHistory(-1) }
+  forward.onclick = () => { moveHistory(1) }
   launcher.onclick = show
   const jumpAtCursor = (): void => {
     if (currentPath === '') return
@@ -110,7 +181,9 @@ function mountStandaloneWorkbench(): () => void {
       const target = locations[0]
       if (target === undefined) { status.textContent = 'No definition found'; return }
       const targetPath = decodeURIComponent(new URL(target.uri).pathname)
-      void openFile(targetPath).then(() => { const lines = editor.value.split('\n'); editor.selectionStart = editor.selectionEnd = lines.slice(0, target.range.start.line).join('\n').length + Math.min(target.range.start.character, lines[target.range.start.line]?.length ?? 0); editor.focus() })
+      const destination = { path: targetPath, line: target.range.start.line, character: target.range.start.character }
+      recordNavigation({ path: currentPath, line, character }, destination)
+      void openFile(destination.path, destination).catch(error => { status.textContent = String(error) })
     }).catch(error => { status.textContent = String(error) })
   }
   editor.addEventListener('click', event => {
@@ -123,7 +196,21 @@ function mountStandaloneWorkbench(): () => void {
     event.preventDefault()
     jumpAtCursor()
   })
-  return () => { launcher.remove(); panel.remove() }
+  editor.addEventListener('input', () => {
+    if (!opened || currentPath === '') return
+    if (changeTimer !== undefined) window.clearTimeout(changeTimer)
+    status.textContent = 'LSP · Updating…'
+    changeTimer = window.setTimeout(() => {
+      changeTimer = undefined
+      void standaloneCall('change', cwd, currentPath, { text: editor.value }).then(() => { status.textContent = `${currentPath} · LSP · Ready` }).catch(error => { status.textContent = String(error) })
+    }, 120)
+  })
+  return () => {
+    if (changeTimer !== undefined) window.clearTimeout(changeTimer)
+    void closeCurrent().catch(console.error)
+    launcher.remove()
+    panel.remove()
+  }
 }
 
 /** Register Cmd/Ctrl-click and persistent document notifications when the sidebar is available. */

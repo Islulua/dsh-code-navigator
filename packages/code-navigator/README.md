@@ -12,4 +12,10 @@ The public lifecycle is `open`, `change`, `definition`, and `close`. A UI adapte
 
 When `dsh-better-sidebar` is also enabled, the optional browser adapter adds Cmd/Ctrl-click definition lookup to code tabs, back and forward controls in the sidebar's top-right control strip, and a compact LSP project/server status line below the editor. The host navigator remains usable by other plugins without this adapter.
 
-Without BetterSidebar, the browser module mounts a lightweight right-side workbench. Enter a workspace path, browse files, open text files, and press Cmd/Ctrl+Enter at the cursor to follow a definition. The workbench is not mounted when BetterSidebar is available, so the two plugins never create competing editor panes.
+Without BetterSidebar, the browser module mounts a lightweight right-side workbench. Enter a workspace path, browse files, open text files, and press Cmd/Ctrl+Enter at the cursor to follow a definition. The workbench keeps its own back/forward history, supports moving to the parent directory, and sends debounced editor changes to the persistent server. The workbench is not mounted when BetterSidebar is available, so the two plugins never create competing editor panes.
+
+## UI adapters
+
+The host plugin owns project detection, persistent language-server processes, document lifecycle, and navigation requests. Browser adapters only supply the editor and file-browser experience.
+
+`dsh-better-sidebar` is one optional adapter. Its generic editor lifecycle and top-bar extension points let the navigator add document notifications, modifier-click navigation, status, and history controls without importing the sidebar implementation. If it is absent, the built-in workbench uses the same HTTP API and provides the required file browser, editable text view, navigation history, and server status. A future UI plugin can call `ctx.codeNavigator` directly or use the HTTP API without depending on either adapter.
