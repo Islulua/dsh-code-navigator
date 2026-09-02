@@ -221,12 +221,48 @@ importers:
 
   packages/code-navigator:
     dependencies:
+      '@codemirror/commands':
+        specifier: ^6.10.4
+        version: 6.11.0
+      '@codemirror/lang-cpp':
+        specifier: ^6.0.3
+        version: 6.0.3
+      '@codemirror/lang-javascript':
+        specifier: ^6.2.5
+        version: 6.2.5
+      '@codemirror/lang-json':
+        specifier: ^6.0.2
+        version: 6.0.2
+      '@codemirror/lang-python':
+        specifier: ^6.2.1
+        version: 6.2.1
+      '@codemirror/lang-yaml':
+        specifier: ^6.1.3
+        version: 6.1.3
+      '@codemirror/language':
+        specifier: ^6.12.4
+        version: 6.12.4
+      '@codemirror/state':
+        specifier: ^6.7.1
+        version: 6.7.2
+      '@codemirror/view':
+        specifier: ^6.43.8
+        version: 6.43.10
       '@deepseek-ai/dsh-lsp':
         specifier: 0.1.2-alpha.3
         version: 0.1.2-alpha.3(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-brand@0.1.2-alpha.3(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.2-alpha.3(@deepseek-ai/cordis@4.0.2)))(@deepseek-ai/dsh-invariants@0.1.2-alpha.3(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-llm@0.1.2-alpha.3(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.2-alpha.3(@deepseek-ai/cordis@4.0.2)))
       '@deepseek-ai/dsh-lsp-stdio':
         specifier: 0.1.2-alpha.3
         version: 0.1.2-alpha.3(3e0194d5159cccc7ace7d50e012edf13)
+      '@lezer/highlight':
+        specifier: ^1.2.3
+        version: 1.2.3
+      react:
+        specifier: ^18.2.0
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.2.0
+        version: 18.2.0(react@18.3.1)
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: 4.0.2
@@ -246,6 +282,12 @@ importers:
       '@types/node':
         specifier: ^24.0.0
         version: 24.13.3
+      '@types/react':
+        specifier: ~18.3.1
+        version: 18.3.31
+      '@types/react-dom':
+        specifier: ~18.3.1
+        version: 18.3.7(@types/react@18.3.31)
       tsdown:
         specifier: ^0.22.14
         version: 0.22.14(typescript@5.9.3)(unrun@0.2.39)

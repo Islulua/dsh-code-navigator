@@ -12,7 +12,7 @@ The public lifecycle is `open`, `change`, `definition`, and `close`. A UI adapte
 
 When `dsh-better-sidebar` is also enabled, the optional browser adapter adds Cmd/Ctrl-click definition lookup to code tabs, back and forward controls in the sidebar's top-right control strip, and a compact LSP project/server status line below the editor. The host navigator remains usable by other plugins without this adapter.
 
-Without BetterSidebar, the browser module mounts a lightweight right-side workbench. Enter a workspace path, browse files, open text files, and press Cmd/Ctrl+Enter at the cursor to follow a definition. The workbench keeps its own back/forward history, supports moving to the parent directory, and sends debounced editor changes to the persistent server. The workbench is not mounted when BetterSidebar is available, so the two plugins never create competing editor panes.
+Without BetterSidebar, the browser module mounts a lightweight right-side workbench. It uses the Sidebar's visual and interaction model: a collapsible tree browser, tabs, a token-driven CodeMirror editor with C/C++, Python, JavaScript/TypeScript, JSON, and YAML highlighting, a status toolbar, and Cmd/Ctrl-click or Cmd/Ctrl+Enter definition lookup. The workbench owns its bundled React and CodeMirror runtime, so it does not load a Sidebar chunk. It keeps its own back/forward history and sends debounced editor changes to the persistent server. The workbench is not mounted when BetterSidebar is available, so the two plugins never create competing editor panes.
 
 ## UI adapters
 

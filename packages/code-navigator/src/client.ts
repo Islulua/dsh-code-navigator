@@ -1,5 +1,6 @@
 /** Optional BetterSidebar adapter for the standalone persistent navigator. */
 import type { Context } from '@deepseek-ai/cordis'
+import { mountNavigatorWorkbench } from './workbench.tsx'
 
 /** Browser-side subset of the generic sidebar extension service. */
 interface SidebarService {
@@ -216,7 +217,7 @@ function mountStandaloneWorkbench(): () => void {
 /** Register Cmd/Ctrl-click and persistent document notifications when the sidebar is available. */
 export function apply(ctx: Context): void {
   const sidebar = ctx.get('betterSidebar') as SidebarService | undefined
-  if (sidebar === undefined) { ctx.effect(mountStandaloneWorkbench, 'dsh-code-navigator: standalone workbench'); return }
+  if (sidebar === undefined) { ctx.effect(mountNavigatorWorkbench, 'dsh-code-navigator: standalone workbench'); return }
   const histories = new Map<string, { entries: Array<{ path: string; line: number; character: number }>; index: number }>()
   const same = (left: { path: string; line: number; character: number }, right: { path: string; line: number; character: number }): boolean => left.path === right.path && left.line === right.line && left.character === right.character
   const move = (scope: Scope, delta: -1 | 1): void => {
