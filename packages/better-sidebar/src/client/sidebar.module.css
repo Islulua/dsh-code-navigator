@@ -58,8 +58,8 @@
   left: 0;
 }
 
-/* The persistent expand/collapse cluster at the top-right corner: two rail
-   controls side by side (bottom panel's glyph LEFT of the right panel's).
+/* The persistent control cluster at the top-right corner: navigation first,
+   then the bottom- and right-panel controls.
    Always pinned to the viewport corner — inside the right panel's top-right
    while it is open, sitting flush in the 34px tab strip (28px buttons at
    top: 3) whose right end it really squeezes. Host-internal z-index 45
@@ -85,10 +85,10 @@
    right end, so the tabs and the + menu genuinely yield space to the cluster
    (never hiding under it). */
 .panel:not(.panelHidden) .tabBar {
-  padding-right: 72px;
+  padding-right: 136px;
 }
 
-/* The closed-state affordance is the native rail icon control: a plain
+/* Each control uses the native rail icon treatment: a plain
    28px circle (the app's icon-button size — the cluster must stay inside
    the 34px tab-strip band so it never covers the pane headers below),
    transparent fill, secondary ink; hover raises the fill. No border, no

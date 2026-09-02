@@ -491,7 +491,7 @@ export function matchUrlTarget(tabs: readonly TabDescriptor[], url: URL): TabDes
  * The plugin version this service instance reports. Keep in lockstep with
  * `package.json`'s version — `tests/service.spec.ts` asserts the pair.
  */
-export const SIDEBAR_SERVICE_VERSION = '0.18.1-alpha.1'
+export const SIDEBAR_SERVICE_VERSION = '0.18.1-alpha.2'
 
 /**
  * Monotonic capability list consumers use to gate new API usage (features
@@ -876,6 +876,7 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
     // Keep a bounded timeline while preserving the current location.
     if (entries.length > 100) entries.splice(0, entries.length - 100)
     navigationHistories.set(sessionId, { entries, index: entries.length - 1 })
+    notify()
   }
 
   const openLocation = (scope: SessionScope, location: SourceLocation, title?: string, origin?: SourceLocation): void => {
@@ -898,6 +899,7 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
     const location = history.entries[index]
     if (location === undefined) return
     history.index = index
+    notify()
     revealLocation(scope, location)
   }
 

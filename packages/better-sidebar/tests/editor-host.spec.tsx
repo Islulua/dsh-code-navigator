@@ -296,36 +296,6 @@ describe('EditorHost (files window)', () => {
     }
   })
 
-  it('the header Back and Forward buttons traverse definition-jump history', () => {
-    const { store, ctx } = setup()
-    const scope = { sessionId: 'editor-home-session', cwd: '/tmp' }
-    const origin = { path: '/tmp/a.ts', line: 2, character: 4 }
-    const target = { path: '/tmp/b.ts', line: 8, character: 1 }
-    ctx.betterSidebar.openLocation(scope, target, undefined, origin)
-    const targetTab = (): SidebarTab =>
-      allLeaves(store.getSnapshot().state!.splits).flatMap(leaf => leaf.tabs)
-        .find(tab => tab.path === target.path)!
-    const { container, rerender, unmount } = mountHost(ctx, store, targetTab)
-    try {
-      const back = container.querySelector<HTMLButtonElement>('button[aria-label="Back"]')!
-      const forward = container.querySelector<HTMLButtonElement>('button[aria-label="Forward"]')!
-      expect(back.disabled).toBe(false)
-      expect(forward.disabled).toBe(true)
-
-      act(() => { back.click() })
-      expect(ctx.betterSidebar.canNavigateBack(scope)).toBe(false)
-      expect(ctx.betterSidebar.canNavigateForward(scope)).toBe(true)
-      rerender()
-      expect(container.querySelector<HTMLButtonElement>('button[aria-label="Forward"]')!.disabled).toBe(false)
-
-      act(() => { container.querySelector<HTMLButtonElement>('button[aria-label="Forward"]')!.click() })
-      expect(ctx.betterSidebar.canNavigateBack(scope)).toBe(true)
-      expect(ctx.betterSidebar.canNavigateForward(scope)).toBe(false)
-    } finally {
-      unmount()
-    }
-  })
-
   it('a folder tab (meta.dir) renders the tree rooted at the folder, no editor chrome', () => {
     const { store, ctx } = setup()
     ctx.betterSidebar!.openTab({
