@@ -64,6 +64,28 @@
               '.hh': cpp
               '.hpp': cpp
               '.hxx': cpp
+    - id: code-navigator-python-typescript
+      name: '@deepseek-ai/dsh-lsp-stdio'
+      config:
+        servers:
+          code-navigator-python:
+            command: pyright-langserver
+            args:
+              - --stdio
+            extensionToLanguage:
+              '.py': python
+              '.pyi': python
+          code-navigator-typescript:
+            command: typescript-language-server
+            args:
+              - --stdio
+            extensionToLanguage:
+              '.ts': typescript
+              '.tsx': typescriptreact
+              '.js': javascript
+              '.jsx': javascriptreact
+              '.mjs': javascript
+              '.cjs': javascript
     - id: better-sidebar
       name: 'dsh-better-sidebar'
       disabled: !!js "[...ctx.loader.entries()].some((e) => e.options.name === 'dsh-better-sidebar' && e.options.id !== 'better-sidebar' && !e.disabled)"
