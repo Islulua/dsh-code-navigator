@@ -138,6 +138,15 @@ ctx.effect(() => ctx.betterSidebar.registerEditorExtension('my-plugin:editor', (
 ctx.betterSidebar.openLocation(scope, { path, line: 0, character: 0 })
 ```
 
+需要在右上角工作台控制条增加无状态操作时，注册 `registerTopBarAction()`；目前图标为 `back` 或 `forward`。操作在注册顺序中位于面板开关之前，适合历史导航一类由消费插件自行管理状态的功能。
+
+```ts
+ctx.effect(() => ctx.betterSidebar.registerTopBarAction({
+  id: 'my-plugin:back', title: 'Go Back', icon: 'back',
+  onClick: scope => goBack(scope),
+}))
+```
+
 ### 4.1 `TabDescriptor` 完整字段
 
 ```ts

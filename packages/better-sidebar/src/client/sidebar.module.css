@@ -81,11 +81,11 @@
   pointer-events: auto;
 }
 
-/* The tab strip of the OPEN right panel reserves the cluster's width at its
-   right end, so the tabs and the + menu genuinely yield space to the cluster
-   (never hiding under it). */
+/* The tab strip of the OPEN right panel reserves the cluster's maximum width
+   at its right end. Two optional external actions plus the two panel toggles
+   fit without covering tabs or the + menu. */
 .panel:not(.panelHidden) .tabBar {
-  padding-right: 72px;
+  padding-right: 136px;
 }
 
 /* The closed-state affordance is the native rail icon control: a plain

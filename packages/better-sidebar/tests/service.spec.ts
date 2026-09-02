@@ -665,6 +665,25 @@ describe('version and feature detection (v0.12.0)', () => {
   })
 })
 
+describe('top bar actions', () => {
+  it('keeps registered actions ordered and removes only its own action', () => {
+    const service = createBetterSidebarService(createSidebarStore())
+    const back = { id: 'test:back', title: 'Back', icon: 'back' as const, onClick: () => {} }
+    const forward = { id: 'test:forward', title: 'Forward', icon: 'forward' as const, onClick: () => {} }
+    const disposeBack = service.registerTopBarAction(back)
+    service.registerTopBarAction(forward)
+    expect(service.getTopBarActions()).toEqual([back, forward])
+    disposeBack()
+    expect(service.getTopBarActions()).toEqual([forward])
+  })
+
+  it('rejects duplicate action ids', () => {
+    const service = createBetterSidebarService(createSidebarStore())
+    service.registerTopBarAction({ id: 'test:history', title: 'History', icon: 'back', onClick: () => {} })
+    expect(() => service.registerTopBarAction({ id: 'test:history', title: 'History', icon: 'forward', onClick: () => {} })).toThrow('already registered')
+  })
+})
+
 describe('state subscription (v0.12.0)', () => {
   it('getSnapshot mirrors the store snapshot (sessionId/state/prefs)', () => {
     const store = createSidebarStore()

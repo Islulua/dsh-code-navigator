@@ -227,6 +227,9 @@ importers:
       '@codemirror/view':
         specifier: ^6.43.8
         version: 6.43.10
+      '@deepseek-ai/dsh-lsp':
+        specifier: 0.1.2-alpha.3
+        version: 0.1.2-alpha.3(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-brand@0.1.2-alpha.3(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.2-alpha.3(@deepseek-ai/cordis@4.0.2)))(@deepseek-ai/dsh-invariants@0.1.2-alpha.3(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-llm@0.1.2-alpha.3(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.2-alpha.3(@deepseek-ai/cordis@4.0.2)))
       '@deepseek-ai/dsh-lsp-stdio':
         specifier: 0.1.2-alpha.3
         version: 0.1.2-alpha.3(3e0194d5159cccc7ace7d50e012edf13)

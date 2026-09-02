@@ -1346,6 +1346,8 @@ export function Sidebar(props: { ctx: Context; store: SidebarStore }) {
     appendToDraft(ctx, sessionId, `@${relativeTo(cwd ?? '', path)}`)
   }, [ctx, sessionId, cwd])
 
+  const topBarActions = ctx.get('betterSidebar')?.getTopBarActions() ?? []
+
   if (state === undefined || sessionId === undefined) {
     // Keep the unavailable controls focusable: touch users have no hover, so
     // focus is the only way the existing Tooltip can explain what is missing.
@@ -1483,6 +1485,13 @@ export function Sidebar(props: { ctx: Context; store: SidebarStore }) {
         so the tabs genuinely yield space to it.
       */}
       <div className={css.toggleCluster} data-dsh-toggle-cluster>
+        {topBarActions.map(action => (
+          <Tooltip key={action.id} label={action.title} side="bottom" delayMs={500}>
+            <button type="button" className={css.toggleButton} aria-label={action.title} onClick={() => { action.onClick({ sessionId, ...(cwd === undefined ? {} : { cwd }) }) }}>
+              {action.icon === 'back' ? '←' : '→'}
+            </button>
+          </Tooltip>
+        ))}
         {/*
           Narrow viewports merge the two workbenches into the one drawer —
           there is no bottom panel, so its toggle button is not offered.

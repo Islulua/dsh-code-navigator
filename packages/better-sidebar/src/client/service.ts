@@ -149,6 +149,14 @@ export interface SidebarEditorExtensionContext {
 /** A pure CodeMirror extension factory contributed by another client plugin. */
 export type SidebarEditorExtensionFactory = (context: SidebarEditorExtensionContext) => Extension | readonly Extension[]
 
+/** One small action rendered immediately before the sidebar panel controls. */
+export interface SidebarTopBarAction {
+  id: string
+  title: string
+  icon: 'back' | 'forward'
+  onClick(scope: SessionScope): void
+}
+
 /** Props every tab component receives (builtins and external alike). */
 export interface TabComponentProps {
   ctx: Context
@@ -363,6 +371,9 @@ export interface BetterSidebarService {
   registerEditorExtension(id: string, factory: SidebarEditorExtensionFactory): () => void
   /** Resolve every live code-editor contribution in stable registration order. */
   getEditorExtensions(context: SidebarEditorExtensionContext): readonly Extension[]
+  /** Register a small action in the top-right workbench strip. */
+  registerTopBarAction(action: SidebarTopBarAction): () => void
+  getTopBarActions(): readonly SidebarTopBarAction[]
   getTabs(): readonly TabDescriptor[]
   getFileViewers(): readonly FileViewerDescriptor[]
   /** Find a tab descriptor by id (undefined if not registered). */
@@ -494,7 +505,7 @@ export function matchUrlTarget(tabs: readonly TabDescriptor[], url: URL): TabDes
  * The plugin version this service instance reports. Keep in lockstep with
  * `package.json`'s version — `tests/service.spec.ts` asserts the pair.
  */
-export const SIDEBAR_SERVICE_VERSION = '0.18.1-alpha.6'
+export const SIDEBAR_SERVICE_VERSION = '0.18.1-alpha.7'
 
 /**
  * Monotonic capability list consumers use to gate new API usage (features
@@ -527,6 +538,7 @@ export const SIDEBAR_FEATURES = [
   'floatWindows',
   'editorExtensions',
   'openLocation',
+  'topBarActions',
 ] as const
 
 /** Run one plugin callback; a throw is logged and never breaks the caller. */
@@ -547,6 +559,7 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
   const tabs = new Map<string, TabDescriptor>()
   const viewers = new Map<string, FileViewerDescriptor>()
   const editorExtensions = new Map<string, SidebarEditorExtensionFactory>()
+  const topBarActions = new Map<string, SidebarTopBarAction>()
   const listeners = new Set<() => void>()
   let navigationRevision = 0
 
@@ -613,7 +626,20 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
     return extensions
   }
 
+  const registerTopBarAction = (action: SidebarTopBarAction): (() => void) => {
+    if (topBarActions.has(action.id)) throw new Error(`[dsh-better-sidebar] top-bar action "${action.id}" already registered`)
+    topBarActions.set(action.id, action)
+    notify()
+    return () => {
+      if (topBarActions.get(action.id) === action) {
+        topBarActions.delete(action.id)
+        notify()
+      }
+    }
+  }
+
   const getTabs = (): readonly TabDescriptor[] => Array.from(tabs.values())
+  const getTopBarActions = (): readonly SidebarTopBarAction[] => Array.from(topBarActions.values())
   const getFileViewers = (): readonly FileViewerDescriptor[] => Array.from(viewers.values())
   const getTab = (id: string): TabDescriptor | undefined => tabs.get(id)
 
@@ -887,6 +913,8 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
     registerFileViewer,
     registerEditorExtension,
     getEditorExtensions,
+    registerTopBarAction,
+    getTopBarActions,
     getTabs,
     getFileViewers,
     getTab,
