@@ -96,8 +96,6 @@ function CodeEditor(props: { tab: Tab; navigationTarget: Position | undefined; o
       extensions: [codeTheme, highlight, lineNumbers(), history(), EditorView.lineWrapping, EditorView.contentAttributes.of({ spellcheck: 'false' }), ...(language(tab.path) === null ? [] : [language(tab.path)!]), keymap.of([...defaultKeymap, ...historyKeymap]),
         EditorView.updateListener.of(update => { if (update.docChanged) changeRef.current(update.state.doc.toString()) }),
         EditorView.domEventHandlers({
-          mousemove(event, current) { current.dom.style.cursor = event.metaKey || event.ctrlKey ? 'pointer' : ''; return false },
-          mouseleave(_event, current) { current.dom.style.cursor = ''; return false },
           mousedown(event, current) {
             if (!(event.metaKey || event.ctrlKey) || event.button !== 0) return false
             const offset = current.posAtCoords({ x: event.clientX, y: event.clientY })
@@ -117,7 +115,46 @@ function CodeEditor(props: { tab: Tab; navigationTarget: Position | undefined; o
     })
     const next = new EditorView({ state, parent: host.current })
     view.current = next
-    return () => { next.destroy(); view.current = null }
+    let hovered: HTMLElement | undefined
+    let savedStyle: { textDecoration: string; textUnderlineOffset: string; cursor: string } | undefined
+    let lastTarget: EventTarget | null = null
+    const clearHover = (): void => {
+      if (hovered === undefined || savedStyle === undefined) return
+      hovered.style.textDecoration = savedStyle.textDecoration
+      hovered.style.textUnderlineOffset = savedStyle.textUnderlineOffset
+      hovered.style.cursor = savedStyle.cursor
+      hovered = undefined
+      savedStyle = undefined
+    }
+    const updateHover = (target: EventTarget | null, modified: boolean): void => {
+      lastTarget = target
+      if (!modified || !(target instanceof Element)) { clearHover(); return }
+      const candidate = target.closest('.cm-line span')
+      if (!(candidate instanceof HTMLElement) || !next.dom.contains(candidate)) { clearHover(); return }
+      if (candidate === hovered) return
+      clearHover()
+      hovered = candidate
+      savedStyle = { textDecoration: candidate.style.textDecoration, textUnderlineOffset: candidate.style.textUnderlineOffset, cursor: candidate.style.cursor }
+      candidate.style.textDecoration = 'underline'
+      candidate.style.textUnderlineOffset = '2px'
+      candidate.style.cursor = 'pointer'
+    }
+    const mousemove = (event: MouseEvent): void => { updateHover(event.target, event.metaKey || event.ctrlKey) }
+    const modifierChange = (event: KeyboardEvent): void => { updateHover(lastTarget, event.metaKey || event.ctrlKey) }
+    const mouseleave = (): void => { lastTarget = null; clearHover() }
+    next.dom.addEventListener('mousemove', mousemove)
+    next.dom.addEventListener('mouseleave', mouseleave)
+    window.addEventListener('keydown', modifierChange)
+    window.addEventListener('keyup', modifierChange)
+    return () => {
+      clearHover()
+      next.dom.removeEventListener('mousemove', mousemove)
+      next.dom.removeEventListener('mouseleave', mouseleave)
+      window.removeEventListener('keydown', modifierChange)
+      window.removeEventListener('keyup', modifierChange)
+      next.destroy()
+      view.current = null
+    }
   }, [tab.path])
   useEffect(() => {
     const current = view.current
