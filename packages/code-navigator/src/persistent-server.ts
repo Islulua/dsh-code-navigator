@@ -1,6 +1,7 @@
 /** Persistent document lifecycle on top of the public DSH stdio transport. */
 import { fileURLToPath } from 'node:url'
 import { extname } from 'node:path'
+import { createRequire } from 'node:module'
 import type { FileSystem, FsTarget } from '@deepseek-ai/dsh-fs'
 import type { SubprocessHandle, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import {
@@ -37,6 +38,7 @@ interface DocumentState { uri: string; languageId: string; version: number; text
 const LANGUAGE_ID: Record<NonNullable<ProjectInfo['language']>, string> = {
   cpp: 'cpp', python: 'python', typescript: 'typescript',
 }
+const packageRequire = createRequire(import.meta.url)
 
 function commandFor(project: ProjectInfo): { command: string; args: string[] } {
   switch (project.server) {
@@ -46,7 +48,10 @@ function commandFor(project: ProjectInfo): { command: string; args: string[] } {
         args: [fileURLToPath(new URL('../scripts/clangd-auto.mjs', import.meta.url)), '--background-index'],
       }
     case 'pyright': return { command: 'pyright-langserver', args: ['--stdio'] }
-    case 'typescript-language-server': return { command: 'typescript-language-server', args: ['--stdio'] }
+    // typescript-language-server intentionally does not package tsserver.
+    // Resolve the Navigator-owned runtime instead of relying on every
+    // workspace to declare TypeScript just to make source navigation work.
+    case 'typescript-language-server': return { command: 'typescript-language-server', args: ['--stdio', '--tsserver-path', packageRequire.resolve('typescript/lib/tsserver.js')] }
     case null: throw new Error('no language server is configured for this file')
   }
 }
