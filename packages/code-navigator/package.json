@@ -1,6 +1,6 @@
 {
   "name": "dsh-code-navigator",
-  "version": "0.1.0-alpha.17",
+  "version": "0.1.0-alpha.18",
   "description": "Standalone persistent language-server navigation for DeepSeek Harness.",
   "type": "module",
   "main": "lib/index.mjs",
@@ -39,6 +39,7 @@
     "@deepseek-ai/dsh-lsp-stdio": "0.1.2-alpha.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-icons": "5.7.0",
     "typescript": "^5.9.3"
   },
   "peerDependencies": {

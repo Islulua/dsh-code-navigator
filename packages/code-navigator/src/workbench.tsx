@@ -5,6 +5,7 @@
  */
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createRoot } from 'react-dom/client'
+import { createPortal } from 'react-dom'
 import { EditorState } from '@codemirror/state'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { cpp } from '@codemirror/lang-cpp'
@@ -15,6 +16,10 @@ import { yaml } from '@codemirror/lang-yaml'
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { EditorView, keymap, lineNumbers } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
+import {
+  VscArrowLeft, VscArrowRight, VscChevronDown, VscChevronRight, VscClose, VscCode,
+  VscFile, VscFolder, VscFolderOpened, VscGoToFile, VscRefresh,
+} from 'react-icons/vsc'
 
 interface FileEntry { name: string; type: 'file' | 'directory'; path: string }
 interface TextFile { path: string; text: string }
@@ -23,6 +28,9 @@ interface Location { uri: string; range: { start: { line: number; character: num
 interface Position { line: number; character: number }
 interface Tab { path: string; text: string; server: string | null; configPath: string | null; state: string }
 interface TreeLevel { entries?: readonly FileEntry[]; error?: string; loading?: boolean }
+interface BreadcrumbSegment { label: string; path: string; directory: boolean }
+interface TabMenu { path: string; x: number; y: number }
+interface PathMenu { directory: string; x: number; y: number; entries?: readonly FileEntry[]; error?: string; loading: boolean }
 
 /** Current-session workspace feed supplied by the DSH client runtime. */
 export interface NavigatorWorkspaceSource {
@@ -33,15 +41,35 @@ export interface NavigatorWorkspaceSource {
 const WORKBENCH_STYLE = `
 .dsh-nav-launcher{position:fixed;right:12px;top:48px;z-index:50;width:30px;height:30px;border:1px solid var(--dsw-alias-border-l2,#d0d7de);border-radius:7px;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#24292f);font:16px/1 system-ui;cursor:pointer}
 .dsh-nav-workbench{position:fixed;right:0;top:0;bottom:0;z-index:49;display:flex;width:min(1100px,82vw);min-width:680px;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#24292f);border-left:1px solid var(--dsw-alias-border-l2,#d0d7de);font:13px/1.45 system-ui,sans-serif;box-shadow:-12px 0 32px rgba(0,0,0,.12)}
-.dsh-nav-workbench *{box-sizing:border-box}.dsh-nav-workbench button,.dsh-nav-workbench input{font:inherit}.dsh-nav-workbench button{color:inherit}.dsh-nav-tree{width:272px;flex:none;display:flex;min-width:0;flex-direction:column;border-right:1px solid var(--dsw-alias-border-l1,#d8dee4);background:var(--dsw-alias-bg-layer-1,#fff)}
+.dsh-nav-workbench *{box-sizing:border-box}.dsh-nav-workbench button,.dsh-nav-workbench input{font:inherit}.dsh-nav-workbench button{color:inherit}.dsh-nav-workbench svg{flex:none}.dsh-nav-tree{width:272px;flex:none;display:flex;min-width:0;flex-direction:column;border-right:1px solid var(--dsw-alias-border-l1,#d8dee4);background:var(--dsw-alias-bg-layer-1,#fff)}
 .dsh-nav-tree-head{display:flex;gap:6px;align-items:center;height:36px;padding:0 8px 0 12px}.dsh-nav-tree-title{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:var(--dsw-font-xxs-strong-12,600 12px system-ui);letter-spacing:.04em}.dsh-nav-workspace-row{display:flex;gap:6px;margin:0 8px 6px;padding:0 5px;border:1px solid var(--dsw-alias-border-l1,#d8dee4);border-radius:6px;background:var(--dsw-alias-bg-base,#fff)}.dsh-nav-cwd{min-width:0;flex:1;border:0;background:transparent;color:inherit;outline:none}.dsh-nav-icon{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border:0;border-radius:5px;background:transparent;color:var(--dsw-alias-label-secondary,#57606a);cursor:pointer}.dsh-nav-icon:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,#eef1f4);color:var(--dsw-alias-label-primary,#24292f)}.dsh-nav-icon:disabled{opacity:.4;cursor:default}
-.dsh-nav-filter{margin:0 8px 8px;border:1px solid var(--dsw-alias-border-l1,#d8dee4);border-radius:6px;padding:5px 8px;background:var(--dsw-alias-bg-base,#fff);color:inherit;outline:none}.dsh-nav-filter:focus{border-color:var(--dsw-alias-brand-primary,#3b82f6)}.dsh-nav-tree-body{flex:1;min-height:0;overflow:auto;padding:2px 8px 10px}.dsh-nav-row{display:flex;align-items:center;gap:6px;width:100%;height:34px;padding:0 8px;border:0;border-radius:8px;background:transparent;color:inherit;text-align:left;cursor:pointer;white-space:nowrap}.dsh-nav-row:hover{background:var(--dsw-alias-interactive-bg-hover,#eef1f4)}.dsh-nav-row-active{background:var(--dsw-alias-interactive-bg-active,#e6efff)}.dsh-nav-chev{width:14px;color:var(--dsw-alias-label-tertiary,#7a8491)}.dsh-nav-kind{width:16px;color:var(--dsw-alias-label-secondary,#57606a)}.dsh-nav-node{min-width:0;overflow:hidden;text-overflow:ellipsis}.dsh-nav-folder{font-weight:600}.dsh-nav-loading{padding:10px;color:var(--dsw-alias-label-tertiary,#7a8491)}.dsh-nav-main{min-width:0;flex:1;display:flex;flex-direction:column}.dsh-nav-tabs{display:flex;align-items:stretch;height:34px;overflow:auto;border-bottom:1px solid var(--dsw-alias-border-l1,#d8dee4);background:var(--dsw-alias-bg-layer-1,#fff)}.dsh-nav-tab{display:flex;align-items:center;gap:6px;min-width:90px;max-width:180px;padding:0 5px 0 10px;border:0;border-right:1px solid var(--dsw-alias-border-l1,#d8dee4);background:transparent;color:var(--dsw-alias-label-secondary,#57606a);cursor:pointer}.dsh-nav-tab:hover{background:var(--dsw-alias-interactive-bg-hover,#eef1f4)}.dsh-nav-tab-active{background:var(--dsw-alias-interactive-bg-active,#e6efff);color:var(--dsw-alias-label-primary,#24292f)}.dsh-nav-tab-title{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dsh-nav-tab-close{width:18px;height:18px;padding:0;border:0;border-radius:4px;background:transparent;cursor:pointer}.dsh-nav-tab-close:hover{background:var(--dsw-alias-interactive-bg-hover,#eef1f4)}
-.dsh-nav-toolbar{display:flex;align-items:center;gap:6px;height:40px;padding:0 10px;border-bottom:1px solid var(--dsw-alias-border-l1,#d8dee4);color:var(--dsw-alias-label-secondary,#57606a)}.dsh-nav-path{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--ds-font-family-code,ui-monospace)}.dsh-nav-status{font-size:12px;white-space:nowrap}.dsh-nav-editor{min-height:0;flex:1}.dsh-nav-editor .cm-editor{height:100%;outline:none}.dsh-nav-editor .cm-scroller{font-family:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace)}.dsh-nav-editor .cm-gutters{border:0;background:transparent;color:var(--dsw-alias-label-tertiary,#7a8491)}.dsh-nav-editor .cm-activeLine,.dsh-nav-editor .cm-activeLineGutter{background:var(--dsw-alias-interactive-bg-hover,#eef1f4)}.dsh-nav-editor .cm-content{padding:10px 0}.dsh-nav-empty{display:flex;flex:1;align-items:center;justify-content:center;color:var(--dsw-alias-label-tertiary,#7a8491)}
+.dsh-nav-filter{margin:0 8px 8px;border:1px solid var(--dsw-alias-border-l1,#d8dee4);border-radius:6px;padding:5px 8px;background:var(--dsw-alias-bg-base,#fff);color:inherit;outline:none}.dsh-nav-filter:focus{border-color:var(--dsw-alias-brand-primary,#3b82f6)}.dsh-nav-tree-body{flex:1;min-height:0;overflow:auto;padding:2px 8px 10px}.dsh-nav-row{display:flex;align-items:center;gap:6px;width:100%;height:34px;padding:0 8px;border:0;border-radius:8px;background:transparent;color:inherit;text-align:left;cursor:pointer;white-space:nowrap}.dsh-nav-row:hover{background:var(--dsw-alias-interactive-bg-hover,#eef1f4)}.dsh-nav-row-active{background:var(--dsw-alias-interactive-bg-active,#e6efff)}.dsh-nav-chev{display:inline-flex;width:14px;color:var(--dsw-alias-label-tertiary,#7a8491)}.dsh-nav-kind{display:inline-flex;width:16px;color:var(--dsw-alias-label-secondary,#57606a)}.dsh-nav-node{min-width:0;overflow:hidden;text-overflow:ellipsis}.dsh-nav-folder{font-weight:600}.dsh-nav-loading{padding:10px;color:var(--dsw-alias-label-tertiary,#7a8491)}.dsh-nav-main{min-width:0;flex:1;display:flex;flex-direction:column}.dsh-nav-tabs{display:flex;align-items:stretch;height:34px;overflow:auto;border-bottom:1px solid var(--dsw-alias-border-l1,#d8dee4);background:var(--dsw-alias-bg-layer-1,#fff)}.dsh-nav-tab{display:flex;align-items:center;gap:6px;min-width:90px;max-width:180px;padding:0 5px 0 10px;border:0;border-right:1px solid var(--dsw-alias-border-l1,#d8dee4);background:transparent;color:var(--dsw-alias-label-secondary,#57606a);cursor:pointer}.dsh-nav-tab:hover{background:var(--dsw-alias-interactive-bg-hover,#eef1f4)}.dsh-nav-tab-active{background:var(--dsw-alias-interactive-bg-active,#e6efff);color:var(--dsw-alias-label-primary,#24292f)}.dsh-nav-tab-title{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dsh-nav-tab-close{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border:0;border-radius:4px;background:transparent;cursor:pointer}.dsh-nav-tab-close:hover{background:var(--dsw-alias-interactive-bg-hover,#eef1f4)}
+.dsh-nav-toolbar{display:flex;align-items:center;gap:4px;height:40px;padding:0 10px;border-bottom:1px solid var(--dsw-alias-border-l1,#d8dee4);color:var(--dsw-alias-label-secondary,#57606a)}.dsh-nav-breadcrumb{display:flex;min-width:0;flex:1;align-items:center;overflow:hidden;white-space:nowrap}.dsh-nav-crumb{display:inline-flex;min-width:0;align-items:center}.dsh-nav-crumb-button{min-width:0;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:0;border-radius:4px;padding:2px 4px;background:transparent;cursor:pointer}.dsh-nav-crumb-button:hover{background:var(--dsw-alias-interactive-bg-hover,#eef1f4);color:var(--dsw-alias-label-primary,#24292f)}.dsh-nav-crumb-file{min-width:0;overflow:hidden;text-overflow:ellipsis;padding:2px 4px;color:var(--dsw-alias-label-primary,#24292f);font-weight:600}.dsh-nav-crumb-separator{color:var(--dsw-alias-label-tertiary,#7a8491)}.dsh-nav-status{font-size:12px;white-space:nowrap}.dsh-nav-editor{min-height:0;flex:1}.dsh-nav-editor .cm-editor{height:100%;outline:none}.dsh-nav-editor .cm-scroller{font-family:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace)}.dsh-nav-editor .cm-gutters{border:0;background:transparent;color:var(--dsw-alias-label-tertiary,#7a8491)}.dsh-nav-editor .cm-activeLine,.dsh-nav-editor .cm-activeLineGutter{background:var(--dsw-alias-interactive-bg-hover,#eef1f4)}.dsh-nav-editor .cm-content{padding:10px 0}.dsh-nav-empty{display:flex;flex:1;align-items:center;justify-content:center;color:var(--dsw-alias-label-tertiary,#7a8491)}
+.dsh-nav-menu{position:fixed;z-index:10000;min-width:176px;padding:4px;border:1px solid var(--dsw-alias-border-l2,#d0d7de);border-radius:7px;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#24292f);box-shadow:0 8px 24px rgba(0,0,0,.16);font:13px/1.4 system-ui,sans-serif}.dsh-nav-menu button{display:flex;width:100%;align-items:center;gap:8px;height:30px;padding:0 10px;border:0;border-radius:5px;background:transparent;text-align:left;cursor:pointer}.dsh-nav-menu button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,#eef1f4)}.dsh-nav-menu button:disabled{opacity:.45;cursor:default}.dsh-nav-path-menu{width:280px;max-width:min(360px,calc(100vw - 16px));max-height:320px;overflow:auto}.dsh-nav-path-menu-head{padding:5px 8px 7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-bottom:1px solid var(--dsw-alias-border-l1,#d8dee4);color:var(--dsw-alias-label-tertiary,#7a8491);font-size:11px}.dsh-nav-path-menu-state{padding:10px;color:var(--dsw-alias-label-tertiary,#7a8491)}.dsh-nav-path-menu-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 `
 
 function fileName(path: string): string {
   const trimmed = path.replace(/[\\/]+$/, '')
   return trimmed.slice(Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\')) + 1)
+}
+function breadcrumbSegments(path: string, workspace: string): readonly BreadcrumbSegment[] {
+  const separator = path.includes('\\') && !path.includes('/') ? '\\' : '/'
+  const root = workspace.replace(/[\\/]+$/, '')
+  if (root !== '' && (path === root || path.startsWith(`${root}${separator}`))) {
+    const relative = path.slice(root.length).replace(/^[\\/]+/, '')
+    const parts = relative === '' ? [] : relative.split(/[\\/]+/)
+    let current = root
+    return [{ label: fileName(root), path: root, directory: parts.length > 0 }, ...parts.map((part, index) => {
+      current += `${separator}${part}`
+      return { label: part, path: current, directory: index < parts.length - 1 }
+    })]
+  }
+  const parts = path.split(/[\\/]+/).filter(Boolean)
+  let current = path.startsWith(separator) ? separator : ''
+  return parts.map((part, index) => {
+    current = current === separator ? `${current}${part}` : current === '' ? part : `${current}${separator}${part}`
+    return { label: part, path: current, directory: index < parts.length - 1 }
+  })
 }
 function positionAt(text: string, offset: number): Position {
   const before = text.slice(0, offset)
@@ -180,7 +208,7 @@ function Tree(props: { cwd: string; levels: ReadonlyMap<string, TreeLevel>; expa
     return entries.filter(entry => filter === '' || entry.name.toLowerCase().includes(filter.toLowerCase())).flatMap(entry => {
       const open = expanded.has(entry.path)
       const row = <button key={entry.path} type="button" className={`dsh-nav-row ${activePath === entry.path ? 'dsh-nav-row-active' : ''}`} style={{ paddingLeft: 7 + depth * 16 }} onClick={() => entry.type === 'directory' ? onToggle(entry.path) : onOpen(entry.path)}>
-        <span className="dsh-nav-chev">{entry.type === 'directory' ? (open ? '⌄' : '›') : ''}</span><span className="dsh-nav-kind">{entry.type === 'directory' ? (open ? '▾' : '▸') : '◇'}</span><span className={`dsh-nav-node ${entry.type === 'directory' ? 'dsh-nav-folder' : ''}`}>{entry.name}</span>
+        <span className="dsh-nav-chev">{entry.type === 'directory' ? (open ? <VscChevronDown /> : <VscChevronRight />) : null}</span><span className="dsh-nav-kind">{entry.type === 'directory' ? (open ? <VscFolderOpened /> : <VscFolder />) : <VscFile />}</span><span className={`dsh-nav-node ${entry.type === 'directory' ? 'dsh-nav-folder' : ''}`}>{entry.name}</span>
       </button>
       return entry.type === 'directory' && open ? [row, ...render(entry.path, depth + 1)] : [row]
     })
@@ -209,7 +237,10 @@ function Workbench(props: { workspaceSource: NavigatorWorkspaceSource }) {
   const [history, setHistory] = useState<Array<{ path: string; position: Position }>>([])
   const [historyIndex, setHistoryIndex] = useState(-1)
   const [navigationTarget, setNavigationTarget] = useState<Position>()
+  const [tabMenu, setTabMenu] = useState<TabMenu | null>(null)
+  const [pathMenu, setPathMenu] = useState<PathMenu | null>(null)
   const timers = useRef(new Map<string, number>())
+  const pathRequest = useRef(0)
   const tabsRef = useRef<Tab[]>([])
   const workspaceRef = useRef(workspace)
   tabsRef.current = tabs
@@ -259,10 +290,39 @@ function Workbench(props: { workspaceSource: NavigatorWorkspaceSource }) {
   const closeTab = (path: string): void => {
     const timer = timers.current.get(path); if (timer !== undefined) window.clearTimeout(timer)
     const tab = tabs.find(item => item.path === path)
-    if (tab?.server !== null) void api('close', workspace, path).catch(console.error)
+    timers.current.delete(path)
+    if (tab?.server != null) void api('close', workspace, path).catch(console.error)
     const rest = tabs.filter(item => item.path !== path)
     setTabs(rest)
     if (activePath === path) setActivePath(rest.at(-1)?.path)
+  }
+  const closeOtherTabs = (path: string): void => {
+    for (const tab of tabs) {
+      if (tab.path === path) continue
+      const timer = timers.current.get(tab.path); if (timer !== undefined) window.clearTimeout(timer)
+      timers.current.delete(tab.path)
+      if (tab.server !== null) void api('close', workspace, tab.path).catch(console.error)
+    }
+    setTabs(previous => previous.filter(tab => tab.path === path))
+    setActivePath(path)
+  }
+  const closeAllTabs = (): void => {
+    for (const tab of tabs) {
+      const timer = timers.current.get(tab.path); if (timer !== undefined) window.clearTimeout(timer)
+      timers.current.delete(tab.path)
+      if (tab.server !== null) void api('close', workspace, tab.path).catch(console.error)
+    }
+    setTabs([])
+    setActivePath(undefined)
+  }
+  const browsePath = (directory: string, x: number, y: number): void => {
+    const request = ++pathRequest.current
+    setPathMenu({ directory, x, y, loading: true })
+    void api<readonly FileEntry[]>('list', workspace, directory).then(entries => {
+      if (pathRequest.current === request) setPathMenu({ directory, x, y, entries, loading: false })
+    }).catch(error => {
+      if (pathRequest.current === request) setPathMenu({ directory, x, y, error: error instanceof Error ? error.message : String(error), loading: false })
+    })
   }
   const change = (text: string): void => {
     if (active === undefined) return
@@ -285,18 +345,54 @@ function Workbench(props: { workspaceSource: NavigatorWorkspaceSource }) {
     const entry = history[historyIndex + delta]; if (entry === undefined) return
     setHistoryIndex(historyIndex + delta); void openFile(entry.path, entry.position)
   }
+  useEffect(() => {
+    if (tabMenu === null && pathMenu === null) return
+    const dismiss = (event: PointerEvent): void => {
+      if (event.target instanceof Element && event.target.closest('[data-dsh-nav-overlay]') !== null) return
+      setTabMenu(null)
+      setPathMenu(null)
+    }
+    const escape = (event: KeyboardEvent): void => { if (event.key === 'Escape') { setTabMenu(null); setPathMenu(null) } }
+    const blur = (): void => { setTabMenu(null); setPathMenu(null) }
+    window.addEventListener('pointerdown', dismiss, true)
+    window.addEventListener('keydown', escape)
+    window.addEventListener('blur', blur)
+    return () => {
+      window.removeEventListener('pointerdown', dismiss, true)
+      window.removeEventListener('keydown', escape)
+      window.removeEventListener('blur', blur)
+    }
+  }, [tabMenu, pathMenu])
   useEffect(() => () => {
     for (const timer of timers.current.values()) window.clearTimeout(timer)
     for (const tab of tabsRef.current) if (tab.server !== null) void api('close', workspaceRef.current, tab.path).catch(console.error)
   }, [])
-  return <>{!open && <button className="dsh-nav-launcher" title="Code Navigator" onClick={() => setOpen(true)}>⌘</button>}{open && <div className="dsh-nav-workbench" data-dsh-code-navigator-workbench="">
+  const crumbs = active === undefined ? [] : breadcrumbSegments(active.path, workspace)
+  const tabOverlay = tabMenu === null ? null : createPortal(<div data-dsh-nav-overlay="" className="dsh-nav-menu" role="menu" style={{ left: Math.max(8, Math.min(tabMenu.x, window.innerWidth - 192)), top: Math.max(8, Math.min(tabMenu.y, window.innerHeight - 110)) }}>
+    <button type="button" role="menuitem" onClick={() => { closeTab(tabMenu.path); setTabMenu(null) }}>Close</button>
+    <button type="button" role="menuitem" disabled={tabs.length <= 1} onClick={() => { closeOtherTabs(tabMenu.path); setTabMenu(null) }}>Close Others</button>
+    <button type="button" role="menuitem" onClick={() => { closeAllTabs(); setTabMenu(null) }}>Close All</button>
+  </div>, document.body)
+  const pathEntries = [...(pathMenu?.entries ?? [])].sort((left, right) => Number(left.type === 'file') - Number(right.type === 'file') || left.name.localeCompare(right.name))
+  const pathOverlay = pathMenu === null ? null : createPortal(<div data-dsh-nav-overlay="" className="dsh-nav-menu dsh-nav-path-menu" role="menu" style={{ left: Math.max(8, Math.min(pathMenu.x, window.innerWidth - 296)), top: Math.max(8, Math.min(pathMenu.y, window.innerHeight - 328)) }}>
+    <div className="dsh-nav-path-menu-head" title={pathMenu.directory}>{pathMenu.directory}</div>
+    {pathMenu.loading && <div className="dsh-nav-path-menu-state">Loading…</div>}
+    {pathMenu.error !== undefined && <div className="dsh-nav-path-menu-state">{pathMenu.error}</div>}
+    {!pathMenu.loading && pathMenu.error === undefined && pathEntries.length === 0 && <div className="dsh-nav-path-menu-state">This folder is empty.</div>}
+    {pathEntries.map(entry => <button key={entry.path} type="button" role="menuitem" title={entry.path} onClick={() => {
+      if (entry.type === 'directory') browsePath(entry.path, pathMenu.x, pathMenu.y)
+      else { setPathMenu(null); void openFile(entry.path) }
+    }}>{entry.type === 'directory' ? <VscFolder /> : <VscFile />}<span className="dsh-nav-path-menu-name">{entry.name}</span>{entry.type === 'directory' && <VscChevronRight />}</button>)}
+  </div>, document.body)
+  return <>{!open && <button className="dsh-nav-launcher" title="Code Navigator" aria-label="Open Code Navigator" onClick={() => setOpen(true)}><VscCode /></button>}{open && <div className="dsh-nav-workbench" data-dsh-code-navigator-workbench="">
     <aside className="dsh-nav-tree">
-      <div className="dsh-nav-tree-head"><span className="dsh-nav-tree-title">EXPLORER · {fileName(workspace) || 'WORKSPACE'}</span><button className="dsh-nav-icon" title="Refresh files" disabled={workspace === ''} onClick={() => { setLevels(new Map()); void loadDirectory(workspace) }}>↻</button><button className="dsh-nav-icon" title="Close navigator" onClick={() => setOpen(false)}>×</button></div>
-      <div className="dsh-nav-workspace-row"><input className="dsh-nav-cwd" value={cwdInput} aria-label="Workspace path" placeholder="Workspace path" onChange={event => setCwdInput(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') resetWorkspace() }} /><button className="dsh-nav-icon" title="Open workspace" onClick={() => resetWorkspace()}>↵</button></div>
+      <div className="dsh-nav-tree-head"><span className="dsh-nav-tree-title">EXPLORER · {fileName(workspace) || 'WORKSPACE'}</span><button className="dsh-nav-icon" title="Refresh files" disabled={workspace === ''} onClick={() => { setLevels(new Map()); void loadDirectory(workspace) }}><VscRefresh /></button><button className="dsh-nav-icon" title="Close navigator" onClick={() => setOpen(false)}><VscClose /></button></div>
+      <div className="dsh-nav-workspace-row"><input className="dsh-nav-cwd" value={cwdInput} aria-label="Workspace path" placeholder="Workspace path" onChange={event => setCwdInput(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') resetWorkspace() }} /><button className="dsh-nav-icon" title="Open workspace" onClick={() => resetWorkspace()}><VscGoToFile /></button></div>
       <input className="dsh-nav-filter" aria-label="Filter files" placeholder="Filter files" value={filter} onChange={event => setFilter(event.target.value)} />
       <div className="dsh-nav-tree-body"><Tree cwd={workspace} levels={levels} expanded={expanded} activePath={activePath} filter={filter} onToggle={toggle} onOpen={path => { void openFile(path) }} /></div>
     </aside>
-    <main className="dsh-nav-main"><div className="dsh-nav-tabs">{tabs.map(tab => <div key={tab.path} className={`dsh-nav-tab ${tab.path === activePath ? 'dsh-nav-tab-active' : ''}`} title={tab.path} onClick={() => setActivePath(tab.path)}><span className="dsh-nav-tab-title">{fileName(tab.path)}</span><button type="button" className="dsh-nav-tab-close" aria-label={`Close ${fileName(tab.path)}`} onClick={event => { event.stopPropagation(); closeTab(tab.path) }}>×</button></div>)}</div><div className="dsh-nav-toolbar"><button className="dsh-nav-icon" title="Go Back" disabled={historyIndex <= 0} onClick={() => move(-1)}>←</button><button className="dsh-nav-icon" title="Go Forward" disabled={historyIndex < 0 || historyIndex >= history.length - 1} onClick={() => move(1)}>→</button><span className="dsh-nav-path">{active?.path ?? 'Choose a file from the workspace'}</span><span className="dsh-nav-status">{active?.state ?? ''}</span></div>{active === undefined ? <div className="dsh-nav-empty">Open a workspace, then choose a source file.</div> : <CodeEditor tab={active} navigationTarget={navigationTarget} onChange={change} onDefinition={definition} />}</main>
+    <main className="dsh-nav-main"><div className="dsh-nav-tabs">{tabs.map(tab => <div key={tab.path} className={`dsh-nav-tab ${tab.path === activePath ? 'dsh-nav-tab-active' : ''}`} title={tab.path} onClick={() => setActivePath(tab.path)} onContextMenu={event => { event.preventDefault(); setPathMenu(null); setTabMenu({ path: tab.path, x: event.clientX, y: event.clientY }) }}><span className="dsh-nav-tab-title">{fileName(tab.path)}</span><button type="button" className="dsh-nav-tab-close" aria-label={`Close ${fileName(tab.path)}`} onClick={event => { event.stopPropagation(); closeTab(tab.path) }}><VscClose /></button></div>)}</div><div className="dsh-nav-toolbar"><button className="dsh-nav-icon" title="Go Back" disabled={historyIndex <= 0} onClick={() => move(-1)}><VscArrowLeft /></button><button className="dsh-nav-icon" title="Go Forward" disabled={historyIndex < 0 || historyIndex >= history.length - 1} onClick={() => move(1)}><VscArrowRight /></button><div className="dsh-nav-breadcrumb">{active === undefined ? <span className="dsh-nav-crumb-file">Choose a file from the workspace</span> : crumbs.map((crumb, index) => <span className="dsh-nav-crumb" key={crumb.path}>{index > 0 && <VscChevronRight className="dsh-nav-crumb-separator" />}{crumb.directory ? <button type="button" className="dsh-nav-crumb-button" title={crumb.path} onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); setTabMenu(null); browsePath(crumb.path, rect.left, rect.bottom + 4) }}>{crumb.label}</button> : <span className="dsh-nav-crumb-file" title={crumb.path}>{crumb.label}</span>}</span>)}</div><span className="dsh-nav-status">{active?.state ?? ''}</span></div>{active === undefined ? <div className="dsh-nav-empty">Open a workspace, then choose a source file.</div> : <CodeEditor tab={active} navigationTarget={navigationTarget} onChange={change} onDefinition={definition} />}</main>
+    {tabOverlay}{pathOverlay}
   </div>}</>
 }
 
