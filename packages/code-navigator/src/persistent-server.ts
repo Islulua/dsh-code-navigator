@@ -1,6 +1,5 @@
 /** Persistent document lifecycle on top of the public DSH stdio transport. */
-import { fileURLToPath } from 'node:url'
-import { extname } from 'node:path'
+import { dirname } from 'node:path'
 import { createRequire } from 'node:module'
 import type { FileSystem, FsTarget } from '@deepseek-ai/dsh-fs'
 import type { SubprocessHandle, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
@@ -11,6 +10,7 @@ import {
   readHostSource,
 } from '@deepseek-ai/dsh-lsp-stdio'
 import type { ProjectInfo } from './project.ts'
+import type { ResolvedCodeNavigatorConfig } from './config.ts'
 
 /** A zero-based UTF-16 source coordinate. */
 export interface Position { line: number; character: number }
@@ -31,7 +31,7 @@ interface SubprocessService {
 }
 
 /** Runtime dependencies supplied by a DSH host profile. */
-export interface NavigatorRuntime { fs: FileSystem; subprocess: SubprocessService }
+export interface NavigatorRuntime { fs: FileSystem; subprocess: SubprocessService; config: ResolvedCodeNavigatorConfig }
 
 interface DocumentState { uri: string; languageId: string; version: number; text: string; references: number }
 
@@ -40,18 +40,20 @@ const LANGUAGE_ID: Record<NonNullable<ProjectInfo['language']>, string> = {
 }
 const packageRequire = createRequire(import.meta.url)
 
-function commandFor(project: ProjectInfo): { command: string; args: string[] } {
+/** Resolve one server launch without depending on user-global Node executables. */
+export function commandFor(project: ProjectInfo, config: ResolvedCodeNavigatorConfig): { command: string; args: string[]; external: boolean } {
   switch (project.server) {
-    case 'clangd':
-      return {
-        command: process.execPath,
-        args: [fileURLToPath(new URL('../scripts/clangd-auto.mjs', import.meta.url)), '--background-index'],
-      }
-    case 'pyright': return { command: 'pyright-langserver', args: ['--stdio'] }
-    // typescript-language-server intentionally does not package tsserver.
-    // Resolve the Navigator-owned runtime instead of relying on every
-    // workspace to declare TypeScript just to make source navigation work.
-    case 'typescript-language-server': return { command: 'typescript-language-server', args: ['--stdio', '--tsserver-path', packageRequire.resolve('typescript/lib/tsserver.js')] }
+    case 'clangd': {
+      const args = [...config.clangdArgs]
+      if (project.configPath !== null && !args.some(arg => arg.startsWith('--compile-commands-dir='))) args.unshift(`--compile-commands-dir=${dirname(project.configPath)}`)
+      return { command: config.clangdCommand, args, external: true }
+    }
+    case 'pyright': return config.pyrightCommand === ''
+      ? { command: process.execPath, args: [packageRequire.resolve('pyright/langserver.index.js'), '--stdio'], external: false }
+      : { command: config.pyrightCommand, args: ['--stdio'], external: true }
+    case 'typescript-language-server': return config.typescriptLanguageServerCommand === ''
+      ? { command: process.execPath, args: [packageRequire.resolve('typescript-language-server/lib/cli.mjs'), '--stdio', '--tsserver-path', packageRequire.resolve('typescript/lib/tsserver.js')], external: false }
+      : { command: config.typescriptLanguageServerCommand, args: ['--stdio', '--tsserver-path', packageRequire.resolve('typescript/lib/tsserver.js')], external: true }
     case null: throw new Error('no language server is configured for this file')
   }
 }
@@ -95,8 +97,19 @@ export class PersistentWorkspace {
     this.phase = 'starting'
     this.message = undefined
     this.emit()
-    const launch = commandFor(this.project)
-    const executable = await this.runtime.subprocess.resolveExecutable(launch.command, {})
+    const launch = commandFor(this.project, this.runtime.config)
+    let executable: string
+    try {
+      executable = await this.runtime.subprocess.resolveExecutable(launch.command, {})
+    } catch (error) {
+      const reported = launch.external
+        ? new Error(`cannot find language server "${launch.command}"; install it or configure its command`, { cause: error })
+        : error
+      this.phase = 'failed'
+      this.message = reported instanceof Error ? reported.message : String(reported)
+      this.emit()
+      throw reported
+    }
     const connection = new LspConnection({
       command: executable,
       args: launch.args,
@@ -140,7 +153,7 @@ export class PersistentWorkspace {
       if (retain) existing.references += 1
       return existing
     }
-    const source = await readHostSource(this.runtime.fs, path, this.workspace, 4_000_000)
+    const source = await readHostSource(this.runtime.fs, path, this.workspace, this.runtime.config.maxDocumentBytes)
     const languageId = this.project.language === null ? 'plaintext' : LANGUAGE_ID[this.project.language]
     const connection = await this.ensureConnection()
     await connection.notify('textDocument/didOpen', { textDocument: { uri: source.fileUrl, languageId, version: 1, text: source.text } })
@@ -153,6 +166,11 @@ export class PersistentWorkspace {
   /** Open a disk-backed document once and retain it until an adapter closes it. */
   open(path: string): Promise<void> {
     return this.enqueue(async () => { await this.ensureDocument(path, true) })
+  }
+
+  /** Initialize the workspace server before the first editor request. */
+  start(): Promise<void> {
+    return this.enqueue(async () => { await this.ensureConnection() })
   }
 
   /** Apply an editor's complete current text without closing its LSP document. */

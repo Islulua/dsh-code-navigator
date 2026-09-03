@@ -2,17 +2,20 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { FileSystem } from '@deepseek-ai/dsh-fs'
 import type { SubprocessHandle, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
-import { detectProject, type ProjectInfo } from './project.ts'
+import { detectProject, findCompilationDatabase, type ProjectInfo } from './project.ts'
 import { PersistentNavigator, type Location, type NavigatorStatus, type Position } from './persistent-server.ts'
+import { Config, resolveConfig, type CodeNavigatorConfig } from './config.ts'
 
 /** Cordis loader name shown in startup diagnostics. */
 export const name = 'code-navigator'
 /** Host services required by the standalone provider. */
 export const inject = ['fs', 'subprocess', 'sessions', 'webServer']
+export { Config }
 
 /** Programmatic API available to independent UI adapters and other DSH plugins. */
 export interface CodeNavigatorService {
   project(cwd: string, path: string): Promise<ProjectInfo>
+  warm(cwd: string): Promise<readonly ProjectInfo[]>
   open(cwd: string, path: string): Promise<void>
   change(cwd: string, path: string, text: string): Promise<void>
   close(cwd: string, path: string): Promise<void>
@@ -63,21 +66,24 @@ async function listFiles(runtime: RuntimeContext, cwd: string, path: string) {
 
 const QUICK_OPEN_SKIPPED_DIRECTORIES = new Set(['.git', '.hg', '.svn', '.cache', '.pytest_cache', '.worktrees', '.venv', 'node_modules'])
 const QUICK_OPEN_DEFERRED_DIRECTORIES = /^(?:build|cmake-build.*|coverage|dist|out|target)$/i
-const QUICK_OPEN_FILE_LIMIT = 50_000
-
 /** Build a bounded recursive file list for the workspace Quick Open palette. */
-async function listWorkspaceFiles(runtime: RuntimeContext, cwd: string) {
+async function listWorkspaceFiles(runtime: RuntimeContext, cwd: string, fileLimit: number) {
   const { root } = await workspaceTarget(runtime, cwd, cwd)
   const queue = [root]
   const deferred: typeof queue = []
   let queueIndex = 0
   let deferredIndex = 0
   const files: string[] = []
-  while ((queueIndex < queue.length || deferredIndex < deferred.length) && files.length < QUICK_OPEN_FILE_LIMIT) {
+  while ((queueIndex < queue.length || deferredIndex < deferred.length) && files.length < fileLimit) {
     const directory = queueIndex < queue.length ? queue[queueIndex++] : deferred[deferredIndex++]
     if (directory === undefined) break
     let entries
-    try { entries = await runtime.fs.listDir(directory) } catch { continue }
+    try {
+      entries = await runtime.fs.listDir(directory)
+    } catch (error) {
+      if (error instanceof Error) continue
+      throw error
+    }
     entries.sort((left, right) => left.name.localeCompare(right.name))
     for (const entry of entries) {
       if (entry.type === 'directory' && !QUICK_OPEN_SKIPPED_DIRECTORIES.has(entry.name)) {
@@ -85,11 +91,11 @@ async function listWorkspaceFiles(runtime: RuntimeContext, cwd: string) {
         else queue.push(entry.target)
       }
       else if (entry.type === 'file') files.push(runtime.fs.processPath(entry.target))
-      if (files.length === QUICK_OPEN_FILE_LIMIT) break
+      if (files.length === fileLimit) break
     }
   }
   files.sort((left, right) => left.localeCompare(right))
-  return { files, truncated: files.length === QUICK_OPEN_FILE_LIMIT }
+  return { files, truncated: files.length === fileLimit }
 }
 
 /** Read a text source below the selected workspace with a fixed response cap. */
@@ -140,15 +146,33 @@ function cwdOf(runtime: RuntimeContext, payload: unknown): string {
 }
 
 /** Install an isolated persistent navigator. It does not mount, modify, or depend on any sidebar. */
-export async function apply(ctx: Context): Promise<void> {
+export async function apply(ctx: Context, config?: CodeNavigatorConfig): Promise<void> {
   const runtime = runtimeOf(ctx)
-  const navigator = new PersistentNavigator({ fs: runtime.fs, subprocess: runtime.subprocess })
+  const resolved = resolveConfig(config)
+  const navigator = new PersistentNavigator({ fs: runtime.fs, subprocess: runtime.subprocess, config: resolved })
+  const projects = new Map<string, Promise<ProjectInfo>>()
+  const project = (cwd: string, path: string): Promise<ProjectInfo> => {
+    const key = `${cwd}\u0000${path}`
+    const existing = projects.get(key)
+    if (existing !== undefined) return existing
+    const pending = detectProject(runtime.fs, cwd, path, resolved)
+    projects.set(key, pending)
+    void pending.catch(() => { projects.delete(key) })
+    return pending
+  }
   const service: CodeNavigatorService = {
-    project: detectProject,
-    async open(cwd, path) { const project = await detectProject(cwd, path); if (project.server === null) throw new Error(`unsupported source file "${path}"`); await (await navigator.workspace(cwd, project)).open(path) },
-    async change(cwd, path, text) { const project = await detectProject(cwd, path); if (project.server === null) throw new Error(`unsupported source file "${path}"`); await (await navigator.workspace(cwd, project)).change(path, text) },
-    async close(cwd, path) { const project = await detectProject(cwd, path); if (project.server === null) return; await (await navigator.workspace(cwd, project)).close(path) },
-    async definition(cwd, path, position) { const project = await detectProject(cwd, path); if (project.server === null) return []; return await (await navigator.workspace(cwd, project)).definition(path, position) },
+    project,
+    async warm(cwd) {
+      const configPath = await findCompilationDatabase(runtime.fs, cwd, resolved)
+      if (configPath === null) return []
+      const detected: ProjectInfo = { language: 'cpp', server: 'clangd', configPath }
+      await (await navigator.workspace(cwd, detected)).start()
+      return [detected]
+    },
+    async open(cwd, path) { const detected = await project(cwd, path); if (detected.server === null) throw new Error(`unsupported source file "${path}"`); await (await navigator.workspace(cwd, detected)).open(path) },
+    async change(cwd, path, text) { const detected = await project(cwd, path); if (detected.server === null) throw new Error(`unsupported source file "${path}"`); await (await navigator.workspace(cwd, detected)).change(path, text) },
+    async close(cwd, path) { const detected = await project(cwd, path); if (detected.server === null) return; await (await navigator.workspace(cwd, detected)).close(path) },
+    async definition(cwd, path, position) { const detected = await project(cwd, path); if (detected.server === null) return []; return await (await navigator.workspace(cwd, detected)).definition(path, position) },
     subscribe: listener => navigator.subscribe(listener),
   }
   ctx.provide('codeNavigator', service)
@@ -162,9 +186,10 @@ export async function apply(ctx: Context): Promise<void> {
         const cwd = cwdOf(runtime, payload)
         switch (method) {
           case 'list': json(res, 200, { ok: true, value: await listFiles(runtime, cwd, requireString(payload, 'path')) }); return
-          case 'files': json(res, 200, { ok: true, value: await listWorkspaceFiles(runtime, cwd) }); return
+          case 'files': json(res, 200, { ok: true, value: await listWorkspaceFiles(runtime, cwd, resolved.quickOpenFileLimit) }); return
           case 'read': json(res, 200, { ok: true, value: await readFile(runtime, cwd, requireString(payload, 'path')) }); return
           case 'project': { const path = requireString(payload, 'path'); json(res, 200, { ok: true, value: await service.project(cwd, path) }); return }
+          case 'warm': json(res, 200, { ok: true, value: await service.warm(cwd) }); return
           case 'open': { const path = requireString(payload, 'path'); await service.open(cwd, path); json(res, 200, { ok: true, value: null }); return }
           case 'change': { const path = requireString(payload, 'path'); await service.change(cwd, path, requireString(payload, 'text')); json(res, 200, { ok: true, value: null }); return }
           case 'close': { const path = requireString(payload, 'path'); await service.close(cwd, path); json(res, 200, { ok: true, value: null }); return }
@@ -177,4 +202,4 @@ export async function apply(ctx: Context): Promise<void> {
   ctx.effect(() => () => navigator.dispose(), 'dsh-code-navigator: dispose persistent servers')
 }
 
-export type { Location, NavigatorStatus, Position, ProjectInfo }
+export type { CodeNavigatorConfig, Location, NavigatorStatus, Position, ProjectInfo }

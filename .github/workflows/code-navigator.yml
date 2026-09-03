@@ -1,0 +1,33 @@
+name: code-navigator
+
+on:
+  push:
+    paths:
+      - packages/code-navigator/**
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - .github/workflows/code-navigator.yml
+  pull_request:
+    paths:
+      - packages/code-navigator/**
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - .github/workflows/code-navigator.yml
+
+jobs:
+  release-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.21.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter dsh-code-navigator check:release
+      - run: pnpm --filter dsh-code-navigator pack --pack-destination "$RUNNER_TEMP"

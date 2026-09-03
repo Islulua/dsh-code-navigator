@@ -295,7 +295,11 @@ function Workbench(props: { workspaceSource: NavigatorWorkspaceSource }) {
     fileIndexRequest.current += 1
     setTabs([]); setActivePath(undefined); setHistory([]); setHistoryIndex(-1); setExpanded(new Set()); setLevels(new Map()); setFileIndex(undefined); setFileIndexError(undefined); setQuickOpenVisible(false)
   }
-  useEffect(() => { if (workspace !== '') { void loadDirectory(workspace); void loadFileIndex() } }, [workspace, workspaceRevision, loadDirectory, loadFileIndex])
+  useEffect(() => {
+    if (workspace === '') return
+    void loadDirectory(workspace)
+    void loadFileIndex()
+  }, [workspace, workspaceRevision, loadDirectory, loadFileIndex])
   useEffect(() => { if (sessionCwd !== '' && sessionCwd !== workspaceRef.current) resetWorkspace(sessionCwd) }, [sessionCwd])
   const toggle = (path: string): void => {
     setExpanded(previous => { const next = new Set(previous); if (next.has(path)) next.delete(path); else { next.add(path); if (!levels.has(path)) void loadDirectory(path) }; return next })
