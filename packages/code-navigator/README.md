@@ -12,6 +12,22 @@ Supported servers are clangd for C/C++, Pyright for Python, and `typescript-lang
 
 The plugin probes all supported servers during activation and caches the result. An unavailable server does not prevent the plugin or workbench from loading. In particular, a missing clangd skips C/C++ warm-up, indexing, document notifications, and definition requests while leaving file browsing, editing, syntax highlighting, Python, and TypeScript operational.
 
+## Install clangd for C/C++ navigation
+
+clangd is optional for the plugin but required for C/C++ indexing and definition lookup. Check and install it before opening a C/C++ workspace:
+
+```sh
+clangd --version
+
+# macOS
+brew install llvm
+
+# Debian / Ubuntu
+sudo apt-get install clangd
+```
+
+Windows users can install an official LLVM release and add `clangd.exe` to `PATH`. If the executable is installed elsewhere, set `clangdCommand` to its absolute path. Current downloads and platform instructions are maintained by the [clangd project](https://clangd.llvm.org/installation).
+
 clangd discovers `compile_commands.json` from the active workspace, preferring the root, `build/`, and `out/build/`. When clangd is available, the standalone workbench starts that discovery and initializes the server as the workspace opens, before the first source file is selected.
 
 ## Installation

@@ -6,6 +6,28 @@
 
 插件提供 C/C++ clangd、Python Pyright、JavaScript/TypeScript Language Server。Pyright、TypeScript Language Server 和 TypeScript 随 npm 包安装；clangd 是 LLVM 原生程序，由操作系统提供，也可以通过配置指定路径。
 
+## 安装 clangd 以启用 C/C++ 跳转
+
+clangd 对插件界面是可选依赖，但 C/C++ 索引和定义跳转必须使用它。建议先检查：
+
+```sh
+clangd --version
+```
+
+没有安装时可按系统安装：
+
+```sh
+# macOS（Homebrew）
+brew install llvm
+
+# Debian / Ubuntu
+sudo apt-get install clangd
+```
+
+Windows 可以安装 LLVM 官方发行版并把 `clangd.exe` 加入 `PATH`。如果 clangd 不在 `PATH`，请通过 `clangdCommand` 配置绝对路径。其他系统和最新下载方式见 [clangd 官方安装文档](https://clangd.llvm.org/installation)。
+
+Pyright、TypeScript Language Server 和 TypeScript 已经随插件安装，不需要用户再全局安装。
+
 ## 主要功能
 
 - Cmd/Ctrl 点击符号跳转到定义，按住修饰键时显示下划线。

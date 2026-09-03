@@ -4,7 +4,30 @@
 
 为 DeepSeek Harness 提供持久化、接近 VS Code 使用方式的源码导航。安装 BetterSidebar 时插件会通过其扩展接口接入；未安装或关闭 BetterSidebar 时，插件会自动提供独立的目录树、标签页、路径面包屑、代码编辑器和快速文件搜索界面。
 
-> 当前状态：`0.1.0-alpha.21`，面向 DSH `0.1.2-alpha.3+` 的发布候选版本；尚不是 Community Market 稳定版。
+> 当前状态：`0.1.0-alpha.22`，面向 DSH `0.1.2-alpha.3+` 的发布候选版本；尚不是 Community Market 稳定版。
+
+## 安装前依赖
+
+插件自身不要求额外安装语言服务器。只有 C/C++ 定义跳转需要额外安装 **clangd**；clangd 是 LLVM 原生程序，因此没有打进 npm 包：
+
+```sh
+# 先检查是否已经安装
+clangd --version
+
+# macOS（Homebrew）
+brew install llvm
+
+# Debian / Ubuntu
+sudo apt-get install clangd
+```
+
+Windows 可以安装 LLVM 官方发行版，并把 `clangd.exe` 加入 `PATH`。如果 Homebrew 安装的 LLVM 不在 `PATH`，请在插件配置中设置：
+
+```yaml
+clangdCommand: /opt/homebrew/opt/llvm/bin/clangd
+```
+
+其他系统的安装包与下载方式见 [clangd 官方安装文档](https://clangd.llvm.org/installation)。Python 和 JavaScript/TypeScript 跳转不需要安装全局依赖，Pyright、TypeScript Language Server 和 TypeScript 已包含在插件 npm 包中。
 
 ## 功能概览
 
@@ -41,7 +64,7 @@ flowchart LR
 pnpm install
 pnpm --filter dsh-code-navigator check:release
 pnpm --filter dsh-code-navigator pack
-dsh plugin --profile web add file:./packages/code-navigator/dsh-code-navigator-0.1.0-alpha.21.tgz
+dsh plugin --profile web add file:./packages/code-navigator/dsh-code-navigator-0.1.0-alpha.22.tgz
 dsh web
 ```
 

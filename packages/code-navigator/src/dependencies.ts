@@ -61,7 +61,7 @@ export class LanguageServerDependencies {
     } catch {
       const message = source === 'bundled'
         ? `${project.server} is unavailable; reinstall dsh-code-navigator`
-        : `${project.server} is unavailable; install it or configure its command`
+        : `${project.server} not found; install LLVM clangd or set clangdCommand`
       return { server: project.server!, available: false, command, source, message }
     }
   }

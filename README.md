@@ -4,7 +4,26 @@
 
 Persistent, VS Code-style source navigation for DeepSeek Harness. The plugin works with BetterSidebar when it is installed and provides its own Explorer, tabs, breadcrumb, editor, and Quick Open workbench when it is not.
 
-> Status: `0.1.0-alpha.21` release candidate for DSH `0.1.2-alpha.3+`. The npm package is not yet a stable Community Market release.
+> Status: `0.1.0-alpha.22` release candidate for DSH `0.1.2-alpha.3+`. The npm package is not yet a stable Community Market release.
+
+## Prerequisites
+
+The plugin itself works without an external language server. C/C++ definition navigation additionally requires **clangd**, which is not included because it is a native LLVM executable:
+
+```sh
+# Check first
+clangd --version
+
+# macOS with Homebrew
+brew install llvm
+
+# Debian / Ubuntu
+sudo apt-get install clangd
+```
+
+On Windows, install an official LLVM release and ensure `clangd.exe` is in `PATH`. If Homebrew installs LLVM outside `PATH`, configure `clangdCommand: /opt/homebrew/opt/llvm/bin/clangd` in the plugin settings. See [clangd's official installation guide](https://clangd.llvm.org/installation) for current platform packages and downloads.
+
+Python and JavaScript/TypeScript navigation require no global installation: Pyright, TypeScript Language Server, and TypeScript are included in the npm package.
 
 ## Features
 
@@ -41,7 +60,7 @@ flowchart LR
 pnpm install
 pnpm --filter dsh-code-navigator check:release
 pnpm --filter dsh-code-navigator pack
-dsh plugin --profile web add file:./packages/code-navigator/dsh-code-navigator-0.1.0-alpha.21.tgz
+dsh plugin --profile web add file:./packages/code-navigator/dsh-code-navigator-0.1.0-alpha.22.tgz
 dsh web
 ```
 

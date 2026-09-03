@@ -19,7 +19,7 @@ describe('language-server dependency detection', () => {
       server: 'clangd',
       available: false,
       source: 'system',
-      message: 'clangd is unavailable; install it or configure its command',
+      message: 'clangd not found; install LLVM clangd or set clangdCommand',
     })
     await dependencies.check(project)
     expect(resolutions).toBe(1)
