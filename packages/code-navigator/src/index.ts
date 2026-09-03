@@ -5,6 +5,7 @@ import type { SubprocessHandle, SubprocessSpawnSpec } from '@deepseek-ai/dsh-sub
 import { detectProject, findCompilationDatabase, type ProjectInfo } from './project.ts'
 import { PersistentNavigator, type Location, type NavigatorStatus, type Position } from './persistent-server.ts'
 import { Config, resolveConfig, type CodeNavigatorConfig } from './config.ts'
+import { LanguageServerDependencies, type LanguageServerAvailability } from './dependencies.ts'
 
 /** Cordis loader name shown in startup diagnostics. */
 export const name = 'code-navigator'
@@ -14,13 +15,20 @@ export { Config }
 
 /** Programmatic API available to independent UI adapters and other DSH plugins. */
 export interface CodeNavigatorService {
-  project(cwd: string, path: string): Promise<ProjectInfo>
-  warm(cwd: string): Promise<readonly ProjectInfo[]>
+  project(cwd: string, path: string): Promise<NavigatorProjectInfo>
+  dependencies(): Promise<readonly LanguageServerAvailability[]>
+  warm(cwd: string): Promise<readonly NavigatorProjectInfo[]>
   open(cwd: string, path: string): Promise<void>
   change(cwd: string, path: string, text: string): Promise<void>
   close(cwd: string, path: string): Promise<void>
   definition(cwd: string, path: string, position: Position): Promise<readonly Location[]>
   subscribe(listener: (status: NavigatorStatus) => void): () => void
+}
+
+/** Project detection combined with the currently installed server capability. */
+export interface NavigatorProjectInfo extends ProjectInfo {
+  available: boolean
+  message?: string
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -150,29 +158,46 @@ export async function apply(ctx: Context, config?: CodeNavigatorConfig): Promise
   const runtime = runtimeOf(ctx)
   const resolved = resolveConfig(config)
   const navigator = new PersistentNavigator({ fs: runtime.fs, subprocess: runtime.subprocess, config: resolved })
-  const projects = new Map<string, Promise<ProjectInfo>>()
-  const project = (cwd: string, path: string): Promise<ProjectInfo> => {
+  const dependencies = new LanguageServerDependencies(runtime.subprocess, resolved)
+  void dependencies.all()
+  const projects = new Map<string, Promise<NavigatorProjectInfo>>()
+  const project = (cwd: string, path: string): Promise<NavigatorProjectInfo> => {
     const key = `${cwd}\u0000${path}`
     const existing = projects.get(key)
     if (existing !== undefined) return existing
-    const pending = detectProject(runtime.fs, cwd, path, resolved)
+    const pending = detectProject(runtime.fs, cwd, path, resolved).then(async detected => {
+      const availability = await dependencies.check(detected)
+      return {
+        ...detected,
+        available: availability?.available ?? false,
+        ...(availability?.message === undefined ? {} : { message: availability.message }),
+      }
+    })
     projects.set(key, pending)
     void pending.catch(() => { projects.delete(key) })
     return pending
   }
   const service: CodeNavigatorService = {
     project,
+    dependencies: () => dependencies.all(),
     async warm(cwd) {
       const configPath = await findCompilationDatabase(runtime.fs, cwd, resolved)
       if (configPath === null) return []
       const detected: ProjectInfo = { language: 'cpp', server: 'clangd', configPath }
+      const availability = await dependencies.check(detected)
+      const result: NavigatorProjectInfo = {
+        ...detected,
+        available: availability?.available ?? false,
+        ...(availability?.message === undefined ? {} : { message: availability.message }),
+      }
+      if (!result.available) return [result]
       await (await navigator.workspace(cwd, detected)).start()
-      return [detected]
+      return [result]
     },
-    async open(cwd, path) { const detected = await project(cwd, path); if (detected.server === null) throw new Error(`unsupported source file "${path}"`); await (await navigator.workspace(cwd, detected)).open(path) },
-    async change(cwd, path, text) { const detected = await project(cwd, path); if (detected.server === null) throw new Error(`unsupported source file "${path}"`); await (await navigator.workspace(cwd, detected)).change(path, text) },
-    async close(cwd, path) { const detected = await project(cwd, path); if (detected.server === null) return; await (await navigator.workspace(cwd, detected)).close(path) },
-    async definition(cwd, path, position) { const detected = await project(cwd, path); if (detected.server === null) return []; return await (await navigator.workspace(cwd, detected)).definition(path, position) },
+    async open(cwd, path) { const detected = await project(cwd, path); if (detected.server === null || !detected.available) return; await (await navigator.workspace(cwd, detected)).open(path) },
+    async change(cwd, path, text) { const detected = await project(cwd, path); if (detected.server === null || !detected.available) return; await (await navigator.workspace(cwd, detected)).change(path, text) },
+    async close(cwd, path) { const detected = await project(cwd, path); if (detected.server === null || !detected.available) return; await (await navigator.workspace(cwd, detected)).close(path) },
+    async definition(cwd, path, position) { const detected = await project(cwd, path); if (detected.server === null || !detected.available) return []; return await (await navigator.workspace(cwd, detected)).definition(path, position) },
     subscribe: listener => navigator.subscribe(listener),
   }
   ctx.provide('codeNavigator', service)
@@ -189,6 +214,7 @@ export async function apply(ctx: Context, config?: CodeNavigatorConfig): Promise
           case 'files': json(res, 200, { ok: true, value: await listWorkspaceFiles(runtime, cwd, resolved.quickOpenFileLimit) }); return
           case 'read': json(res, 200, { ok: true, value: await readFile(runtime, cwd, requireString(payload, 'path')) }); return
           case 'project': { const path = requireString(payload, 'path'); json(res, 200, { ok: true, value: await service.project(cwd, path) }); return }
+          case 'dependencies': json(res, 200, { ok: true, value: await service.dependencies() }); return
           case 'warm': json(res, 200, { ok: true, value: await service.warm(cwd) }); return
           case 'open': { const path = requireString(payload, 'path'); await service.open(cwd, path); json(res, 200, { ok: true, value: null }); return }
           case 'change': { const path = requireString(payload, 'path'); await service.change(cwd, path, requireString(payload, 'text')); json(res, 200, { ok: true, value: null }); return }
@@ -202,4 +228,4 @@ export async function apply(ctx: Context, config?: CodeNavigatorConfig): Promise
   ctx.effect(() => () => navigator.dispose(), 'dsh-code-navigator: dispose persistent servers')
 }
 
-export type { CodeNavigatorConfig, Location, NavigatorStatus, Position, ProjectInfo }
+export type { CodeNavigatorConfig, LanguageServerAvailability, Location, NavigatorStatus, Position, ProjectInfo }

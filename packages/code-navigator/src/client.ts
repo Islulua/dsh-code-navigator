@@ -96,7 +96,8 @@ export function apply(ctx: Context): void {
     let timer: number | undefined
     const status = document.createElement('div')
     let projectLabel = 'LSP'
-    let started = false
+    let enabled = false
+    let disposed = false
     const setStatus = (state: 'detecting' | 'starting' | 'ready' | 'updating' | 'failed'): void => {
       const suffix = state === 'detecting' ? 'Detecting project…' : state === 'starting' ? 'Starting…' : state === 'ready' ? 'Ready' : state === 'updating' ? 'Updating…' : 'Failed'
       status.textContent = `${projectLabel} · ${suffix}`
@@ -104,13 +105,23 @@ export function apply(ctx: Context): void {
     status.style.cssText = 'padding:3px 8px;font:11px var(--dsw-font-code,monospace);color:var(--dsw-alias-label-secondary);border-top:1px solid var(--dsw-alias-border-l2)'
     setStatus('detecting')
     dom.parentElement?.append(status)
-    void call<{ server: string | null; configPath: string | null }>('project', scope, path).then(project => {
+    void call<{ server: string | null; configPath: string | null; available: boolean; message?: string }>('project', scope, path).then(async project => {
       const config = project.configPath?.split(/[\\/]/).pop()
       projectLabel = [project.server ?? 'LSP', config].filter(Boolean).join(' · ')
-      setStatus(started ? 'ready' : 'starting')
-    }).catch(console.error)
-    void call('open', scope, path).then(() => { started = true; setStatus('ready') }).catch(error => { setStatus('failed'); console.error(error) })
+      if (project.server === null) { status.textContent = 'Plain text'; return }
+      if (!project.available) { status.textContent = `${projectLabel} · ${project.message ?? 'Unavailable'}`; return }
+      if (disposed) return
+      setStatus('starting')
+      await call('open', scope, path)
+      if (disposed) { void call('close', scope, path).catch(console.error); return }
+      enabled = true
+      setStatus('ready')
+    }).catch(error => {
+      setStatus('failed')
+      console.error(error)
+    })
     const offChange = onDocumentChange(text => {
+      if (!enabled) return
       if (timer !== undefined) window.clearTimeout(timer)
       setStatus('updating')
       timer = window.setTimeout(() => { void call('change', scope, path, { text }).then(() => { setStatus('ready') }).catch(error => { setStatus('failed'); console.error(error) }) }, 120)
@@ -128,7 +139,7 @@ export function apply(ctx: Context): void {
     }
     const updateHover = (target: EventTarget | null, modified: boolean): void => {
       lastTarget = target
-      if (!modified || !(target instanceof Element)) { clearHover(); return }
+      if (!enabled || !modified || !(target instanceof Element)) { clearHover(); return }
       const candidate = target.closest('span')
       if (candidate === null || !dom.contains(candidate)) { clearHover(); return }
       if (candidate === hover) return
@@ -142,7 +153,7 @@ export function apply(ctx: Context): void {
     const mousemove = (event: MouseEvent): void => { updateHover(event.target, event.metaKey || event.ctrlKey) }
     const modifierChange = (event: KeyboardEvent): void => { updateHover(lastTarget, event.metaKey || event.ctrlKey) }
     const click = (event: MouseEvent): void => {
-      if (event.button !== 0 || !(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return
+      if (!enabled || event.button !== 0 || !(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return
       const position = posAtCoords({ x: event.clientX, y: event.clientY })
       if (position === null) return
       event.preventDefault()
@@ -162,6 +173,7 @@ export function apply(ctx: Context): void {
     window.addEventListener('keydown', modifierChange)
     window.addEventListener('keyup', modifierChange)
     return () => {
+      disposed = true
       if (timer !== undefined) window.clearTimeout(timer)
       offChange()
       clearHover()
@@ -170,7 +182,7 @@ export function apply(ctx: Context): void {
       window.removeEventListener('keydown', modifierChange)
       window.removeEventListener('keyup', modifierChange)
       status.remove()
-      void call('close', scope, path).catch(console.error)
+      if (enabled) void call('close', scope, path).catch(console.error)
     }
   }), 'dsh-code-navigator: BetterSidebar adapter')
   ctx.effect(() => {

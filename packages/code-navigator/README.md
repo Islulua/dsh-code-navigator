@@ -1,14 +1,18 @@
 # dsh-code-navigator
 
+[简体中文](README.zh-CN.md)
+
 `dsh-code-navigator` is an independent DSH plugin that keeps a language-server process and its opened documents alive per workspace. It supports DSH `0.1.2-alpha.3` and newer releases in the `0.1.2` line.
 
 It packages the LSP service definition required by its stdio provider, so a normal profile installation does not depend on a separately installed DSH LSP plugin.
 
 It exposes `ctx.codeNavigator` to other host plugins and `/code-navigator/api/*` for browser adapters. It deliberately owns neither a sidebar nor `ctx.lsp`, so it can coexist with `dsh-better-sidebar`, the stock LSP provider, and other UI plugins.
 
-Supported servers are clangd for C/C++, Pyright for Python, and `typescript-language-server` for JavaScript/TypeScript. Pyright, TypeScript Language Server, and TypeScript are installed with this package. clangd is an LLVM native executable and remains a system dependency; install it with Xcode Command Line Tools, an LLVM package, or your operating system's package manager. The plugin reports a direct installation/configuration error when clangd is unavailable.
+Supported servers are clangd for C/C++, Pyright for Python, and `typescript-language-server` for JavaScript/TypeScript. Pyright, TypeScript Language Server, and TypeScript are installed with this package. clangd is an LLVM native executable and remains a system dependency; install it with Xcode Command Line Tools, an LLVM package, or your operating system's package manager. The status bar explains when clangd is unavailable while the rest of the plugin remains active.
 
-clangd discovers `compile_commands.json` from the active workspace, preferring the root, `build/`, and `out/build/`. The standalone workbench starts that discovery and initializes clangd when the workspace opens, before the first source file is selected.
+The plugin probes all supported servers during activation and caches the result. An unavailable server does not prevent the plugin or workbench from loading. In particular, a missing clangd skips C/C++ warm-up, indexing, document notifications, and definition requests while leaving file browsing, editing, syntax highlighting, Python, and TypeScript operational.
+
+clangd discovers `compile_commands.json` from the active workspace, preferring the root, `build/`, and `out/build/`. When clangd is available, the standalone workbench starts that discovery and initializes the server as the workspace opens, before the first source file is selected.
 
 ## Installation
 

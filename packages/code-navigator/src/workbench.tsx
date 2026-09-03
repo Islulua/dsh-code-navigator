@@ -24,7 +24,7 @@ import { rankQuickOpenFiles } from './quick-open.ts'
 
 interface FileEntry { name: string; type: 'file' | 'directory'; path: string }
 interface TextFile { path: string; text: string }
-interface Project { server: string | null; configPath: string | null }
+interface Project { server: string | null; configPath: string | null; available: boolean; message?: string }
 interface Location { uri: string; range: { start: { line: number; character: number } } }
 interface Position { line: number; character: number }
 interface Tab { path: string; text: string; server: string | null; configPath: string | null; state: string }
@@ -133,7 +133,7 @@ function CodeEditor(props: { tab: Tab; navigationTarget: Position | undefined; o
         EditorView.updateListener.of(update => { if (update.docChanged) changeRef.current(update.state.doc.toString()) }),
         EditorView.domEventHandlers({
           mousedown(event, current) {
-            if (!(event.metaKey || event.ctrlKey) || event.button !== 0) return false
+            if (tab.server === null || !(event.metaKey || event.ctrlKey) || event.button !== 0) return false
             const offset = current.posAtCoords({ x: event.clientX, y: event.clientY })
             if (offset === null) return false
             event.preventDefault()
@@ -141,7 +141,7 @@ function CodeEditor(props: { tab: Tab; navigationTarget: Position | undefined; o
             return true
           },
           keydown(event, current) {
-            if (!(event.metaKey || event.ctrlKey) || event.key !== 'Enter') return false
+            if (tab.server === null || !(event.metaKey || event.ctrlKey) || event.key !== 'Enter') return false
             event.preventDefault()
             definitionRef.current(positionAt(current.state.doc.toString(), current.state.selection.main.head))
             return true
@@ -164,7 +164,7 @@ function CodeEditor(props: { tab: Tab; navigationTarget: Position | undefined; o
     }
     const updateHover = (target: EventTarget | null, modified: boolean): void => {
       lastTarget = target
-      if (!modified || !(target instanceof Element)) { clearHover(); return }
+      if (tab.server === null || !modified || !(target instanceof Element)) { clearHover(); return }
       const candidate = target.closest('.cm-line span')
       if (!(candidate instanceof HTMLElement) || !next.dom.contains(candidate)) { clearHover(); return }
       if (candidate === hovered) return
@@ -309,10 +309,12 @@ function Workbench(props: { workspaceSource: NavigatorWorkspaceSource }) {
     if (existing !== undefined) { setActivePath(path); setNavigationTarget(position); return }
     try {
       const [file, project] = await Promise.all([api<TextFile>('read', workspace, path), api<Project>('project', workspace, path)])
-      const tab: Tab = { path: file.path, text: file.text, server: project.server, configPath: project.configPath, state: project.server === null ? 'Plain text' : 'Starting LSP…' }
+      const activeServer = project.available ? project.server : null
+      const unavailable = project.server === null ? 'Plain text' : `${project.server} · ${project.message ?? 'Unavailable'}`
+      const tab: Tab = { path: file.path, text: file.text, server: activeServer, configPath: project.configPath, state: activeServer === null ? unavailable : 'Starting LSP…' }
       setTabs(previous => [...previous, tab]); setActivePath(file.path)
-      if (project.server !== null) await api('open', workspace, file.path)
-      setTabs(previous => previous.map(item => item.path === file.path ? { ...item, state: project.server === null ? 'Plain text' : 'LSP · Ready' } : item))
+      if (activeServer !== null) await api('open', workspace, file.path)
+      setTabs(previous => previous.map(item => item.path === file.path ? { ...item, state: activeServer === null ? unavailable : 'LSP · Ready' } : item))
       if (position !== undefined) window.setTimeout(() => { setNavigationTarget(position) })
     } catch (error) {
       const state = error instanceof Error ? error.message : String(error)
