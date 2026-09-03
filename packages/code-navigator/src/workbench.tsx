@@ -3,7 +3,7 @@
  * editor model and token-driven visual language, but owns its own tabs and
  * file tree so BetterSidebar remains optional at runtime.
  */
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createPortal } from 'react-dom'
 import { EditorState } from '@codemirror/state'
@@ -18,8 +18,9 @@ import { EditorView, keymap, lineNumbers } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
 import {
   VscArrowLeft, VscArrowRight, VscChevronDown, VscChevronRight, VscClose, VscCode,
-  VscFile, VscFolder, VscFolderOpened, VscGoToFile, VscRefresh,
+  VscFile, VscFolder, VscFolderOpened, VscGoToFile, VscRefresh, VscSearch,
 } from 'react-icons/vsc'
+import { rankQuickOpenFiles } from './quick-open.ts'
 
 interface FileEntry { name: string; type: 'file' | 'directory'; path: string }
 interface TextFile { path: string; text: string }
@@ -31,6 +32,7 @@ interface TreeLevel { entries?: readonly FileEntry[]; error?: string; loading?: 
 interface BreadcrumbSegment { label: string; path: string; directory: boolean }
 interface TabMenu { path: string; x: number; y: number }
 interface PathMenu { directory: string; x: number; y: number; entries?: readonly FileEntry[]; error?: string; loading: boolean }
+interface FileIndex { files: readonly string[]; truncated: boolean }
 
 /** Current-session workspace feed supplied by the DSH client runtime. */
 export interface NavigatorWorkspaceSource {
@@ -46,6 +48,7 @@ const WORKBENCH_STYLE = `
 .dsh-nav-filter{margin:0 8px 8px;border:1px solid var(--dsw-alias-border-l1,#d8dee4);border-radius:6px;padding:5px 8px;background:var(--dsw-alias-bg-base,#fff);color:inherit;outline:none}.dsh-nav-filter:focus{border-color:var(--dsw-alias-brand-primary,#3b82f6)}.dsh-nav-tree-body{flex:1;min-height:0;overflow:auto;padding:2px 8px 10px}.dsh-nav-row{display:flex;align-items:center;gap:6px;width:100%;height:34px;padding:0 8px;border:0;border-radius:8px;background:transparent;color:inherit;text-align:left;cursor:pointer;white-space:nowrap}.dsh-nav-row:hover{background:var(--dsw-alias-interactive-bg-hover,#eef1f4)}.dsh-nav-row-active{background:var(--dsw-alias-interactive-bg-active,#e6efff)}.dsh-nav-chev{display:inline-flex;width:14px;color:var(--dsw-alias-label-tertiary,#7a8491)}.dsh-nav-kind{display:inline-flex;width:16px;color:var(--dsw-alias-label-secondary,#57606a)}.dsh-nav-node{min-width:0;overflow:hidden;text-overflow:ellipsis}.dsh-nav-folder{font-weight:600}.dsh-nav-loading{padding:10px;color:var(--dsw-alias-label-tertiary,#7a8491)}.dsh-nav-main{min-width:0;flex:1;display:flex;flex-direction:column}.dsh-nav-tabs{display:flex;align-items:stretch;height:34px;overflow:auto;border-bottom:1px solid var(--dsw-alias-border-l1,#d8dee4);background:var(--dsw-alias-bg-layer-1,#fff)}.dsh-nav-tab{display:flex;align-items:center;gap:6px;min-width:90px;max-width:180px;padding:0 5px 0 10px;border:0;border-right:1px solid var(--dsw-alias-border-l1,#d8dee4);background:transparent;color:var(--dsw-alias-label-secondary,#57606a);cursor:pointer}.dsh-nav-tab:hover{background:var(--dsw-alias-interactive-bg-hover,#eef1f4)}.dsh-nav-tab-active{background:var(--dsw-alias-interactive-bg-active,#e6efff);color:var(--dsw-alias-label-primary,#24292f)}.dsh-nav-tab-title{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dsh-nav-tab-close{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border:0;border-radius:4px;background:transparent;cursor:pointer}.dsh-nav-tab-close:hover{background:var(--dsw-alias-interactive-bg-hover,#eef1f4)}
 .dsh-nav-toolbar{display:flex;align-items:center;gap:4px;height:40px;padding:0 10px;border-bottom:1px solid var(--dsw-alias-border-l1,#d8dee4);color:var(--dsw-alias-label-secondary,#57606a)}.dsh-nav-breadcrumb{display:flex;min-width:0;flex:1;align-items:center;overflow:hidden;white-space:nowrap}.dsh-nav-crumb{display:inline-flex;min-width:0;align-items:center}.dsh-nav-crumb-button{min-width:0;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:0;border-radius:4px;padding:2px 4px;background:transparent;cursor:pointer}.dsh-nav-crumb-button:hover{background:var(--dsw-alias-interactive-bg-hover,#eef1f4);color:var(--dsw-alias-label-primary,#24292f)}.dsh-nav-crumb-file{min-width:0;overflow:hidden;text-overflow:ellipsis;padding:2px 4px;color:var(--dsw-alias-label-primary,#24292f);font-weight:600}.dsh-nav-crumb-separator{color:var(--dsw-alias-label-tertiary,#7a8491)}.dsh-nav-status{font-size:12px;white-space:nowrap}.dsh-nav-editor{min-height:0;flex:1}.dsh-nav-editor .cm-editor{height:100%;outline:none}.dsh-nav-editor .cm-scroller{font-family:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace)}.dsh-nav-editor .cm-gutters{border:0;background:transparent;color:var(--dsw-alias-label-tertiary,#7a8491)}.dsh-nav-editor .cm-activeLine,.dsh-nav-editor .cm-activeLineGutter{background:var(--dsw-alias-interactive-bg-hover,#eef1f4)}.dsh-nav-editor .cm-content{padding:10px 0}.dsh-nav-empty{display:flex;flex:1;align-items:center;justify-content:center;color:var(--dsw-alias-label-tertiary,#7a8491)}
 .dsh-nav-menu{position:fixed;z-index:10000;min-width:176px;padding:4px;border:1px solid var(--dsw-alias-border-l2,#d0d7de);border-radius:7px;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#24292f);box-shadow:0 8px 24px rgba(0,0,0,.16);font:13px/1.4 system-ui,sans-serif}.dsh-nav-menu button{display:flex;width:100%;align-items:center;gap:8px;height:30px;padding:0 10px;border:0;border-radius:5px;background:transparent;text-align:left;cursor:pointer}.dsh-nav-menu button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,#eef1f4)}.dsh-nav-menu button:disabled{opacity:.45;cursor:default}.dsh-nav-path-menu{width:280px;max-width:min(360px,calc(100vw - 16px));max-height:320px;overflow:auto}.dsh-nav-path-menu-head{padding:5px 8px 7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-bottom:1px solid var(--dsw-alias-border-l1,#d8dee4);color:var(--dsw-alias-label-tertiary,#7a8491);font-size:11px}.dsh-nav-path-menu-state{padding:10px;color:var(--dsw-alias-label-tertiary,#7a8491)}.dsh-nav-path-menu-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dsh-nav-quick-shade{position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,.08)}.dsh-nav-quick{position:absolute;top:10vh;left:50%;width:min(620px,calc(100vw - 32px));transform:translateX(-50%);overflow:hidden;border:1px solid var(--dsw-alias-border-l2,#d0d7de);border-radius:9px;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#24292f);box-shadow:0 16px 48px rgba(0,0,0,.24);font:13px/1.4 system-ui,sans-serif}.dsh-nav-quick-input-row{display:flex;align-items:center;gap:9px;margin:8px;border:1px solid var(--dsw-alias-brand-primary,#3b82f6);border-radius:6px;padding:0 10px;box-shadow:0 0 0 1px color-mix(in srgb,var(--dsw-alias-brand-primary,#3b82f6) 18%,transparent)}.dsh-nav-quick-input{height:34px;min-width:0;flex:1;border:0;outline:0;background:transparent;color:inherit;font:14px/1.4 system-ui,sans-serif}.dsh-nav-quick-results{max-height:min(430px,60vh);overflow:auto;padding:0 5px 5px}.dsh-nav-quick-row{display:grid;width:100%;grid-template-columns:18px minmax(100px,auto) minmax(0,1fr);align-items:center;gap:8px;height:34px;padding:0 8px;border:0;border-radius:5px;background:transparent;text-align:left;cursor:pointer}.dsh-nav-quick-row:hover,.dsh-nav-quick-row-active{background:var(--dsw-alias-interactive-bg-active,#e6efff)}.dsh-nav-quick-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}.dsh-nav-quick-directory{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary,#7a8491);font-size:12px}.dsh-nav-quick-state{padding:14px;color:var(--dsw-alias-label-tertiary,#7a8491)}.dsh-nav-quick-foot{padding:5px 12px;border-top:1px solid var(--dsw-alias-border-l1,#d8dee4);color:var(--dsw-alias-label-tertiary,#7a8491);font-size:11px}
 `
 
 function fileName(path: string): string {
@@ -70,6 +73,11 @@ function breadcrumbSegments(path: string, workspace: string): readonly Breadcrum
     current = current === separator ? `${current}${part}` : current === '' ? part : `${current}${separator}${part}`
     return { label: part, path: current, directory: index < parts.length - 1 }
   })
+}
+function relativePath(path: string, workspace: string): string {
+  const root = workspace.replace(/[\\/]+$/, '')
+  const relative = path.startsWith(`${root}/`) || path.startsWith(`${root}\\`) ? path.slice(root.length + 1) : path
+  return relative.replaceAll('\\', '/')
 }
 function positionAt(text: string, offset: number): Position {
   const before = text.slice(0, offset)
@@ -239,8 +247,16 @@ function Workbench(props: { workspaceSource: NavigatorWorkspaceSource }) {
   const [navigationTarget, setNavigationTarget] = useState<Position>()
   const [tabMenu, setTabMenu] = useState<TabMenu | null>(null)
   const [pathMenu, setPathMenu] = useState<PathMenu | null>(null)
+  const [quickOpenVisible, setQuickOpenVisible] = useState(false)
+  const [quickOpenQuery, setQuickOpenQuery] = useState('')
+  const [quickOpenSelection, setQuickOpenSelection] = useState(0)
+  const [fileIndex, setFileIndex] = useState<FileIndex>()
+  const [fileIndexLoading, setFileIndexLoading] = useState(false)
+  const [fileIndexError, setFileIndexError] = useState<string>()
   const timers = useRef(new Map<string, number>())
   const pathRequest = useRef(0)
+  const fileIndexRequest = useRef(0)
+  const quickOpenInput = useRef<HTMLInputElement>(null)
   const tabsRef = useRef<Tab[]>([])
   const workspaceRef = useRef(workspace)
   tabsRef.current = tabs
@@ -252,6 +268,20 @@ function Workbench(props: { workspaceSource: NavigatorWorkspaceSource }) {
     try { const entries = await api<readonly FileEntry[]>('list', workspace, path); setLevels(previous => new Map(previous).set(path, { entries })) }
     catch (error) { setLevels(previous => new Map(previous).set(path, { error: error instanceof Error ? error.message : String(error) })) }
   }, [workspace])
+  const loadFileIndex = useCallback(async () => {
+    if (workspace === '') return
+    const request = ++fileIndexRequest.current
+    setFileIndexLoading(true)
+    setFileIndexError(undefined)
+    try {
+      const next = await api<FileIndex>('files', workspace, workspace)
+      if (fileIndexRequest.current === request) setFileIndex(next)
+    } catch (error) {
+      if (fileIndexRequest.current === request) setFileIndexError(error instanceof Error ? error.message : String(error))
+    } finally {
+      if (fileIndexRequest.current === request) setFileIndexLoading(false)
+    }
+  }, [workspace])
   const resetWorkspace = (requested = cwdInput): void => {
     const next = requested.trim()
     if (next === '') return
@@ -262,9 +292,10 @@ function Workbench(props: { workspaceSource: NavigatorWorkspaceSource }) {
     setCwdInput(next)
     setWorkspace(next)
     setWorkspaceRevision(revision => revision + 1)
-    setTabs([]); setActivePath(undefined); setHistory([]); setHistoryIndex(-1); setExpanded(new Set()); setLevels(new Map())
+    fileIndexRequest.current += 1
+    setTabs([]); setActivePath(undefined); setHistory([]); setHistoryIndex(-1); setExpanded(new Set()); setLevels(new Map()); setFileIndex(undefined); setFileIndexError(undefined); setQuickOpenVisible(false)
   }
-  useEffect(() => { if (workspace !== '') void loadDirectory(workspace) }, [workspace, workspaceRevision, loadDirectory])
+  useEffect(() => { if (workspace !== '') { void loadDirectory(workspace); void loadFileIndex() } }, [workspace, workspaceRevision, loadDirectory, loadFileIndex])
   useEffect(() => { if (sessionCwd !== '' && sessionCwd !== workspaceRef.current) resetWorkspace(sessionCwd) }, [sessionCwd])
   const toggle = (path: string): void => {
     setExpanded(previous => { const next = new Set(previous); if (next.has(path)) next.delete(path); else { next.add(path); if (!levels.has(path)) void loadDirectory(path) }; return next })
@@ -345,6 +376,31 @@ function Workbench(props: { workspaceSource: NavigatorWorkspaceSource }) {
     const entry = history[historyIndex + delta]; if (entry === undefined) return
     setHistoryIndex(historyIndex + delta); void openFile(entry.path, entry.position)
   }
+  const quickOpenResults = useMemo(() => rankQuickOpenFiles(fileIndex?.files ?? [], quickOpenQuery, workspace), [fileIndex, quickOpenQuery, workspace])
+  const showQuickOpen = useCallback((): void => {
+    if (workspaceRef.current === '') return
+    setOpen(true)
+    setTabMenu(null)
+    setPathMenu(null)
+    setQuickOpenQuery('')
+    setQuickOpenSelection(0)
+    setQuickOpenVisible(true)
+  }, [])
+  useEffect(() => {
+    const shortcut = (event: KeyboardEvent): void => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== 'p') return
+      event.preventDefault()
+      event.stopPropagation()
+      showQuickOpen()
+    }
+    window.addEventListener('keydown', shortcut, true)
+    return () => { window.removeEventListener('keydown', shortcut, true) }
+  }, [showQuickOpen])
+  useEffect(() => {
+    if (!quickOpenVisible) return
+    quickOpenInput.current?.focus()
+  }, [quickOpenVisible])
+  useEffect(() => { setQuickOpenSelection(0) }, [quickOpenQuery, fileIndex])
   useEffect(() => {
     if (tabMenu === null && pathMenu === null) return
     const dismiss = (event: PointerEvent): void => {
@@ -384,15 +440,42 @@ function Workbench(props: { workspaceSource: NavigatorWorkspaceSource }) {
       else { setPathMenu(null); void openFile(entry.path) }
     }}>{entry.type === 'directory' ? <VscFolder /> : <VscFile />}<span className="dsh-nav-path-menu-name">{entry.name}</span>{entry.type === 'directory' && <VscChevronRight />}</button>)}
   </div>, document.body)
+  const quickOpenOverlay = !quickOpenVisible ? null : createPortal(<div className="dsh-nav-quick-shade" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setQuickOpenVisible(false) }}>
+    <div className="dsh-nav-quick" role="dialog" aria-modal="true" aria-label="Quick Open">
+      <div className="dsh-nav-quick-input-row"><VscSearch /><input ref={quickOpenInput} className="dsh-nav-quick-input" aria-label="Search files by name" placeholder="Search files by name" value={quickOpenQuery} onChange={event => setQuickOpenQuery(event.target.value)} onKeyDown={event => {
+        if (event.key === 'Escape') { event.preventDefault(); setQuickOpenVisible(false); return }
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          event.preventDefault()
+          if (quickOpenResults.length === 0) return
+          const delta = event.key === 'ArrowDown' ? 1 : -1
+          setQuickOpenSelection(previous => (previous + delta + quickOpenResults.length) % quickOpenResults.length)
+          window.setTimeout(() => { document.querySelector('.dsh-nav-quick-row-active')?.scrollIntoView({ block: 'nearest' }) })
+          return
+        }
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          const path = quickOpenResults[quickOpenSelection]
+          if (path !== undefined) { setQuickOpenVisible(false); void openFile(path) }
+        }
+      }} /></div>
+      <div className="dsh-nav-quick-results" role="listbox" aria-label="Workspace files">
+        {fileIndexLoading && fileIndex === undefined && <div className="dsh-nav-quick-state">Indexing workspace files…</div>}
+        {fileIndexError !== undefined && <div className="dsh-nav-quick-state">{fileIndexError}</div>}
+        {!fileIndexLoading && fileIndexError === undefined && quickOpenResults.length === 0 && <div className="dsh-nav-quick-state">{quickOpenQuery === '' ? 'No workspace files found.' : 'No matching files.'}</div>}
+        {quickOpenResults.map((path, index) => { const relative = relativePath(path, workspace); const directory = relative.slice(0, Math.max(0, relative.lastIndexOf('/'))); return <button key={path} type="button" role="option" aria-selected={index === quickOpenSelection} className={`dsh-nav-quick-row ${index === quickOpenSelection ? 'dsh-nav-quick-row-active' : ''}`} title={relative} onMouseEnter={() => setQuickOpenSelection(index)} onClick={() => { setQuickOpenVisible(false); void openFile(path) }}><VscFile /><span className="dsh-nav-quick-name">{fileName(path)}</span><span className="dsh-nav-quick-directory">{directory}</span></button> })}
+      </div>
+      <div className="dsh-nav-quick-foot">{fileIndexLoading ? 'Indexing…' : `${fileIndex?.files.length ?? 0}${fileIndex?.truncated === true ? '+' : ''} files`} · ↑↓ select · Enter open · Esc close</div>
+    </div>
+  </div>, document.body)
   return <>{!open && <button className="dsh-nav-launcher" title="Code Navigator" aria-label="Open Code Navigator" onClick={() => setOpen(true)}><VscCode /></button>}{open && <div className="dsh-nav-workbench" data-dsh-code-navigator-workbench="">
     <aside className="dsh-nav-tree">
-      <div className="dsh-nav-tree-head"><span className="dsh-nav-tree-title">EXPLORER · {fileName(workspace) || 'WORKSPACE'}</span><button className="dsh-nav-icon" title="Refresh files" disabled={workspace === ''} onClick={() => { setLevels(new Map()); void loadDirectory(workspace) }}><VscRefresh /></button><button className="dsh-nav-icon" title="Close navigator" onClick={() => setOpen(false)}><VscClose /></button></div>
+      <div className="dsh-nav-tree-head"><span className="dsh-nav-tree-title">EXPLORER · {fileName(workspace) || 'WORKSPACE'}</span><button className="dsh-nav-icon" title="Refresh files" disabled={workspace === ''} onClick={() => { setLevels(new Map()); setFileIndex(undefined); void loadDirectory(workspace); void loadFileIndex() }}><VscRefresh /></button><button className="dsh-nav-icon" title="Close navigator" onClick={() => setOpen(false)}><VscClose /></button></div>
       <div className="dsh-nav-workspace-row"><input className="dsh-nav-cwd" value={cwdInput} aria-label="Workspace path" placeholder="Workspace path" onChange={event => setCwdInput(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') resetWorkspace() }} /><button className="dsh-nav-icon" title="Open workspace" onClick={() => resetWorkspace()}><VscGoToFile /></button></div>
       <input className="dsh-nav-filter" aria-label="Filter files" placeholder="Filter files" value={filter} onChange={event => setFilter(event.target.value)} />
       <div className="dsh-nav-tree-body"><Tree cwd={workspace} levels={levels} expanded={expanded} activePath={activePath} filter={filter} onToggle={toggle} onOpen={path => { void openFile(path) }} /></div>
     </aside>
     <main className="dsh-nav-main"><div className="dsh-nav-tabs">{tabs.map(tab => <div key={tab.path} className={`dsh-nav-tab ${tab.path === activePath ? 'dsh-nav-tab-active' : ''}`} title={tab.path} onClick={() => setActivePath(tab.path)} onContextMenu={event => { event.preventDefault(); setPathMenu(null); setTabMenu({ path: tab.path, x: event.clientX, y: event.clientY }) }}><span className="dsh-nav-tab-title">{fileName(tab.path)}</span><button type="button" className="dsh-nav-tab-close" aria-label={`Close ${fileName(tab.path)}`} onClick={event => { event.stopPropagation(); closeTab(tab.path) }}><VscClose /></button></div>)}</div><div className="dsh-nav-toolbar"><button className="dsh-nav-icon" title="Go Back" disabled={historyIndex <= 0} onClick={() => move(-1)}><VscArrowLeft /></button><button className="dsh-nav-icon" title="Go Forward" disabled={historyIndex < 0 || historyIndex >= history.length - 1} onClick={() => move(1)}><VscArrowRight /></button><div className="dsh-nav-breadcrumb">{active === undefined ? <span className="dsh-nav-crumb-file">Choose a file from the workspace</span> : crumbs.map((crumb, index) => <span className="dsh-nav-crumb" key={crumb.path}>{index > 0 && <VscChevronRight className="dsh-nav-crumb-separator" />}{crumb.directory ? <button type="button" className="dsh-nav-crumb-button" title={crumb.path} onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); setTabMenu(null); browsePath(crumb.path, rect.left, rect.bottom + 4) }}>{crumb.label}</button> : <span className="dsh-nav-crumb-file" title={crumb.path}>{crumb.label}</span>}</span>)}</div><span className="dsh-nav-status">{active?.state ?? ''}</span></div>{active === undefined ? <div className="dsh-nav-empty">Open a workspace, then choose a source file.</div> : <CodeEditor tab={active} navigationTarget={navigationTarget} onChange={change} onDefinition={definition} />}</main>
-    {tabOverlay}{pathOverlay}
+    {tabOverlay}{pathOverlay}{quickOpenOverlay}
   </div>}</>
 }
 

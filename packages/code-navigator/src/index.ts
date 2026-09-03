@@ -61,6 +61,37 @@ async function listFiles(runtime: RuntimeContext, cwd: string, path: string) {
   }))
 }
 
+const QUICK_OPEN_SKIPPED_DIRECTORIES = new Set(['.git', '.hg', '.svn', '.cache', '.pytest_cache', '.worktrees', '.venv', 'node_modules'])
+const QUICK_OPEN_DEFERRED_DIRECTORIES = /^(?:build|cmake-build.*|coverage|dist|out|target)$/i
+const QUICK_OPEN_FILE_LIMIT = 50_000
+
+/** Build a bounded recursive file list for the workspace Quick Open palette. */
+async function listWorkspaceFiles(runtime: RuntimeContext, cwd: string) {
+  const { root } = await workspaceTarget(runtime, cwd, cwd)
+  const queue = [root]
+  const deferred: typeof queue = []
+  let queueIndex = 0
+  let deferredIndex = 0
+  const files: string[] = []
+  while ((queueIndex < queue.length || deferredIndex < deferred.length) && files.length < QUICK_OPEN_FILE_LIMIT) {
+    const directory = queueIndex < queue.length ? queue[queueIndex++] : deferred[deferredIndex++]
+    if (directory === undefined) break
+    let entries
+    try { entries = await runtime.fs.listDir(directory) } catch { continue }
+    entries.sort((left, right) => left.name.localeCompare(right.name))
+    for (const entry of entries) {
+      if (entry.type === 'directory' && !QUICK_OPEN_SKIPPED_DIRECTORIES.has(entry.name)) {
+        if (QUICK_OPEN_DEFERRED_DIRECTORIES.test(entry.name)) deferred.push(entry.target)
+        else queue.push(entry.target)
+      }
+      else if (entry.type === 'file') files.push(runtime.fs.processPath(entry.target))
+      if (files.length === QUICK_OPEN_FILE_LIMIT) break
+    }
+  }
+  files.sort((left, right) => left.localeCompare(right))
+  return { files, truncated: files.length === QUICK_OPEN_FILE_LIMIT }
+}
+
 /** Read a text source below the selected workspace with a fixed response cap. */
 async function readFile(runtime: RuntimeContext, cwd: string, path: string) {
   const { target } = await workspaceTarget(runtime, cwd, path)
@@ -131,6 +162,7 @@ export async function apply(ctx: Context): Promise<void> {
         const cwd = cwdOf(runtime, payload)
         switch (method) {
           case 'list': json(res, 200, { ok: true, value: await listFiles(runtime, cwd, requireString(payload, 'path')) }); return
+          case 'files': json(res, 200, { ok: true, value: await listWorkspaceFiles(runtime, cwd) }); return
           case 'read': json(res, 200, { ok: true, value: await readFile(runtime, cwd, requireString(payload, 'path')) }); return
           case 'project': { const path = requireString(payload, 'path'); json(res, 200, { ok: true, value: await service.project(cwd, path) }); return }
           case 'open': { const path = requireString(payload, 'path'); await service.open(cwd, path); json(res, 200, { ok: true, value: null }); return }
