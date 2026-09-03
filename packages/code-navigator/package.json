@@ -1,6 +1,6 @@
 {
   "name": "dsh-code-navigator",
-  "version": "0.1.0-alpha.15",
+  "version": "0.1.0-alpha.16",
   "description": "Standalone persistent language-server navigation for DeepSeek Harness.",
   "type": "module",
   "main": "lib/index.mjs",

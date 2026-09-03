@@ -1,6 +1,6 @@
 /** Optional BetterSidebar adapter for the standalone persistent navigator. */
 import type { Context } from '@deepseek-ai/cordis'
-import { mountNavigatorWorkbench } from './workbench.tsx'
+import { mountNavigatorWorkbench, type NavigatorWorkspaceSource } from './workbench.tsx'
 
 /** Browser-side subset of the generic sidebar extension service. */
 interface SidebarService {
@@ -17,7 +17,14 @@ interface EditorContext {
 }
 // The host service is independent. The sidebar is only an optional browser
 // adapter, so it must never make this client module wait for activation.
-export const inject: readonly string[] = []
+export const inject: readonly string[] = ['sessions']
+
+interface ClientSessions {
+  list: {
+    getSnapshot(): { current?: string; byId: Record<string, { cwd?: string }> }
+    subscribe(listener: () => void): () => void
+  }
+}
 
 function locationAt(text: string, position: number): { line: number; character: number; start: number } {
   const before = text.slice(0, position)
@@ -217,7 +224,18 @@ function mountStandaloneWorkbench(): () => void {
 /** Register Cmd/Ctrl-click and persistent document notifications when the sidebar is available. */
 export function apply(ctx: Context): void {
   const sidebar = ctx.get('betterSidebar') as SidebarService | undefined
-  if (sidebar === undefined) { ctx.effect(mountNavigatorWorkbench, 'dsh-code-navigator: standalone workbench'); return }
+  if (sidebar === undefined) {
+    const sessions = ctx.get('sessions') as unknown as ClientSessions
+    const workspaceSource: NavigatorWorkspaceSource = {
+      getSnapshot: () => {
+        const snapshot = sessions.list.getSnapshot()
+        return snapshot.current === undefined ? '' : snapshot.byId[snapshot.current]?.cwd ?? ''
+      },
+      subscribe: listener => sessions.list.subscribe(listener),
+    }
+    ctx.effect(() => mountNavigatorWorkbench(workspaceSource), 'dsh-code-navigator: standalone workbench')
+    return
+  }
   const histories = new Map<string, { entries: Array<{ path: string; line: number; character: number }>; index: number }>()
   const same = (left: { path: string; line: number; character: number }, right: { path: string; line: number; character: number }): boolean => left.path === right.path && left.line === right.line && left.character === right.character
   const move = (scope: Scope, delta: -1 | 1): void => {
