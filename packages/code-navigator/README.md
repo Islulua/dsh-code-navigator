@@ -84,7 +84,7 @@ pnpm --filter dsh-code-navigator pack
 
 ## Marketplace status
 
-The alpha package is suitable for tarball and direct npm testing, but it is not a DSH Community Market target. A Market release must use an exact stable version, publish that version to the public npm registry, expose the repository declared by `repository`, and target the DSH/Cordis runtime shipped by the current Desktop release. Promote this package to `0.1.0` only after those compatibility and repository checks pass; do not publish an alpha under the npm `latest` tag.
+The stable package is published to npm under the `latest` tag. Community Market discovery requires this exact stable version, the public repository declared by `repository`, and compatibility with the DSH/Cordis runtime shipped by the current Desktop release. Use prerelease versions only for tarball or npm prerelease testing.
 
 ## Security and resource limits
 

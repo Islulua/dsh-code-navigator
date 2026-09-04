@@ -4,7 +4,7 @@
 
 为 DeepSeek Harness 提供持久化、接近 VS Code 使用方式的源码导航。安装 BetterSidebar 时插件会通过其扩展接口接入；未安装或关闭 BetterSidebar 时，插件会自动提供独立的目录树、标签页、路径面包屑、代码编辑器和快速文件搜索界面。
 
-> 当前状态：`0.1.0-alpha.22`，面向 DSH `0.1.2-alpha.3+` 的发布候选版本；尚不是 Community Market 稳定版。
+> 当前状态：稳定版 `0.1.0`，面向 DSH `0.1.2-alpha.3+`。
 
 ## 安装前依赖
 
@@ -64,7 +64,7 @@ flowchart LR
 pnpm install
 pnpm --filter dsh-code-navigator check:release
 pnpm --filter dsh-code-navigator pack
-dsh plugin --profile web add file:./packages/code-navigator/dsh-code-navigator-0.1.0-alpha.22.tgz
+dsh plugin --profile web add file:./packages/code-navigator/dsh-code-navigator-0.1.0.tgz
 dsh web
 ```
 

@@ -97,7 +97,7 @@ pnpm --filter dsh-code-navigator pack
 
 `check:release` 执行严格类型检查、单元测试、干净生产构建和 npm 包结构检查。`prepack` 会重新构建 `lib/`，避免发布陈旧产物。
 
-当前 alpha 可用于本地压缩包和 npm 预发布测试，但不能作为 DSH Community Market 的稳定目标。正式上架前需要发布精确稳定版本、公开清单中声明的 GitHub 仓库，并验证当前 DSH Desktop 内置 runtime 的兼容性。
+稳定版会以 npm 的 `latest` 标签发布。要被 Community Market 发现，需要发布这个精确的稳定版本、公开 `repository` 中声明的 GitHub 仓库，并验证与当前 DSH Desktop 内置 DSH/Cordis runtime 的兼容性。预发布版本仅用于本地压缩包或 npm 预发布测试。
 
 ## 安全与资源限制
 

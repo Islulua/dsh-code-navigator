@@ -4,7 +4,7 @@
 
 Persistent, VS Code-style source navigation for DeepSeek Harness. The plugin works with BetterSidebar when it is installed and provides its own Explorer, tabs, breadcrumb, editor, and Quick Open workbench when it is not.
 
-> Status: `0.1.0-alpha.22` release candidate for DSH `0.1.2-alpha.3+`. The npm package is not yet a stable Community Market release.
+> Status: stable `0.1.0` release for DSH `0.1.2-alpha.3+`.
 
 ## Prerequisites
 
@@ -60,7 +60,7 @@ flowchart LR
 pnpm install
 pnpm --filter dsh-code-navigator check:release
 pnpm --filter dsh-code-navigator pack
-dsh plugin --profile web add file:./packages/code-navigator/dsh-code-navigator-0.1.0-alpha.22.tgz
+dsh plugin --profile web add file:./packages/code-navigator/dsh-code-navigator-0.1.0.tgz
 dsh web
 ```
 
