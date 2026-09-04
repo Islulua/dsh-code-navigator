@@ -38,6 +38,20 @@ clangdCommand: /opt/homebrew/opt/llvm/bin/clangd
 | 按住修饰键显示下划线 | 标签页右键关闭菜单 | 插件内置 TypeScript Language Server |
 | Cmd/Ctrl+P 搜索文件 | LSP 状态与索引预热 | 启动时自动探测依赖 |
 
+## 界面截图
+
+**独立工作台：目录树、标签页、面包屑、编辑器与 LSP 状态**
+
+![独立工作台](packages/code-navigator/assets/workbench.png)
+
+**点击面包屑可展开相应目录**
+
+![面包屑目录选择器](packages/code-navigator/assets/breadcrumb-directory.png)
+
+**前进与后退导航按钮**
+
+![导航历史按钮](packages/code-navigator/assets/navigation-history.png)
+
 ## 缺少依赖时的行为
 
 插件启动后会探测语言服务器并缓存结果。某项依赖缺失只会关闭对应语言能力，不会导致插件加载失败或界面一直 Pending：

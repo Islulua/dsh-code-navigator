@@ -34,6 +34,20 @@ Python and JavaScript/TypeScript navigation require no global installation: Pyri
 | Modifier-hover underline | Tab close/context menu | Bundled TypeScript Language Server |
 | Cmd/Ctrl+P file search | LSP status and index warm-up | Automatic dependency detection |
 
+## Screenshots
+
+**Standalone workbench — Explorer, tabs, breadcrumb, editor, and LSP status**
+
+![Standalone workbench](packages/code-navigator/assets/workbench.png)
+
+**Clickable breadcrumb directory picker**
+
+![Breadcrumb directory picker](packages/code-navigator/assets/breadcrumb-directory.png)
+
+**Back and forward navigation controls**
+
+![Navigation history controls](packages/code-navigator/assets/navigation-history.png)
+
 ## Graceful degradation
 
 Language servers are detected during activation and the result is cached. Missing tools disable only their language feature:

@@ -12,6 +12,20 @@ Supported servers are clangd for C/C++, Pyright for Python, and `typescript-lang
 
 The plugin probes all supported servers during activation and caches the result. An unavailable server does not prevent the plugin or workbench from loading. In particular, a missing clangd skips C/C++ warm-up, indexing, document notifications, and definition requests while leaving file browsing, editing, syntax highlighting, Python, and TypeScript operational.
 
+## Screenshots
+
+**Standalone workbench — Explorer, tabs, breadcrumb, editor, and LSP status**
+
+![Standalone workbench](https://raw.githubusercontent.com/Islulua/dsh-code-navigator/main/packages/code-navigator/assets/workbench.png)
+
+**Clickable breadcrumb directory picker**
+
+![Breadcrumb directory picker](https://raw.githubusercontent.com/Islulua/dsh-code-navigator/main/packages/code-navigator/assets/breadcrumb-directory.png)
+
+**Back and forward navigation controls**
+
+![Navigation history controls](https://raw.githubusercontent.com/Islulua/dsh-code-navigator/main/packages/code-navigator/assets/navigation-history.png)
+
 ## Install clangd for C/C++ navigation
 
 clangd is optional for the plugin but required for C/C++ indexing and definition lookup. Check and install it before opening a C/C++ workspace:

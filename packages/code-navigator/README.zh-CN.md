@@ -6,6 +6,20 @@
 
 插件提供 C/C++ clangd、Python Pyright、JavaScript/TypeScript Language Server。Pyright、TypeScript Language Server 和 TypeScript 随 npm 包安装；clangd 是 LLVM 原生程序，由操作系统提供，也可以通过配置指定路径。
 
+## 界面截图
+
+**独立工作台：目录树、标签页、面包屑、编辑器与 LSP 状态**
+
+![独立工作台](https://raw.githubusercontent.com/Islulua/dsh-code-navigator/main/packages/code-navigator/assets/workbench.png)
+
+**点击面包屑可展开相应目录**
+
+![面包屑目录选择器](https://raw.githubusercontent.com/Islulua/dsh-code-navigator/main/packages/code-navigator/assets/breadcrumb-directory.png)
+
+**前进与后退导航按钮**
+
+![导航历史按钮](https://raw.githubusercontent.com/Islulua/dsh-code-navigator/main/packages/code-navigator/assets/navigation-history.png)
+
 ## 安装 clangd 以启用 C/C++ 跳转
 
 clangd 对插件界面是可选依赖，但 C/C++ 索引和定义跳转必须使用它。建议先检查：
